@@ -3,7 +3,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { WcError } from './cli.mjs';
-import { currentBranch, git, resolveCommit } from './git.mjs';
+import { currentBranch, git, pushStatus, resolveCommit } from './git.mjs';
 import { normalizeNewlines, writeTextAtomic } from './io.mjs';
 import { assertDataHomeSafe, tmpRoot } from './paths.mjs';
 import { workingTreeStatus } from './worktree.mjs';
@@ -87,4 +87,56 @@ export function createCommit(top, titleText) {
     committedFiles: status.staged.length,
     leftUncommitted: status.unstaged.length + status.untracked.length,
   };
+}
+
+// "Co-Authored-By: ..." 같은 트레일러 줄
+const TRAILER = /^[A-Za-z][A-Za-z0-9-]*: .+$/;
+
+/** 기존 메시지 뒤에 본문을 붙인다. 마지막 문단이 트레일러면 그 앞에 넣어 트레일러가 끝에 남게 한다. */
+export function insertBeforeTrailers(message, body) {
+  const trimmed = normalizeNewlines(message).replace(/\s+$/, '');
+  const paragraphs = trimmed.split(/\n{2,}/);
+  if (paragraphs.length > 1) {
+    const last = paragraphs[paragraphs.length - 1];
+    if (last.split('\n').every((l) => TRAILER.test(l))) {
+      return `${[...paragraphs.slice(0, -1), body, last].join('\n\n')}\n`;
+    }
+  }
+  return `${trimmed}\n\n${body}\n`;
+}
+
+/**
+ * 마무리 모드: 마지막 커밋의 메시지 본문에 기록한다 (기획 6.5 마무리 모드 1).
+ * - 이미 푸시됐거나 확인할 수 없으면 거부한다 (원칙 4).
+ * - --only로 amend해서, 사용자가 스테이징해 둔 변경이 커밋에 섞이지 않게 한다.
+ */
+export function amendBody(top, bodyText, { dryRun = false } = {}) {
+  const body = normalizeNewlines(bodyText).trim();
+  if (!body) throw new WcError('INVALID_INPUT', 'The body file is empty.');
+  const push = pushStatus(top, 'HEAD');
+  if (push.pushed !== false) {
+    throw new WcError('ALREADY_PUSHED', 'The last commit is already pushed (or that could not be checked), so it must not be changed.', {
+      reason: push.reason,
+    });
+  }
+  if (git(['rev-parse', '-q', '--verify', 'MERGE_HEAD'], { cwd: top, allowFail: true }).ok) {
+    throw new WcError('MERGE_IN_PROGRESS', 'A merge is in progress. Finish or abort it first.');
+  }
+  const original = git(['log', '-1', '--format=%B', 'HEAD'], { cwd: top }).stdout;
+  const message = insertBeforeTrailers(original, body);
+  if (dryRun) return { dryRun: true, oldSha: push.sha, message };
+
+  assertDataHomeSafe();
+  const messageFile = path.join(tmpRoot(), `amend-message-${process.pid}.txt`);
+  writeTextAtomic(messageFile, message);
+  try {
+    const r = git(['commit', '--amend', '--only', '--cleanup=whitespace', '-F', messageFile], { cwd: top, allowFail: true });
+    if (!r.ok) {
+      const output = `${r.stderr}\n${r.stdout}`.trim();
+      throw new WcError('COMMIT_FAILED', 'git commit --amend failed.', { output: output.slice(-4000) });
+    }
+  } finally {
+    fs.rmSync(messageFile, { force: true });
+  }
+  return { dryRun: false, oldSha: push.sha, newSha: resolveCommit(top, 'HEAD'), message };
 }

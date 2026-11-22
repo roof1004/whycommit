@@ -116,6 +116,9 @@ export function computeRange(top, projectId, { mode = 'auto', ignoreRecorded = f
   }
 
   if (resolvedMode === 'pr') {
+    if (!def) {
+      throw new WcError('NEED_DEFAULT_BRANCH', 'The default branch is unknown. Ask the user and pass --default-branch.');
+    }
     const ref = baseRefFor(top, def);
     if (!ref) throw new WcError('NO_SUCH_BRANCH', `The default branch "${def.name}" does not exist here.`);
     const mb = git(['merge-base', head, ref], { cwd: top, allowFail: true });

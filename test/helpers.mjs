@@ -117,6 +117,33 @@ export function makeRepo(sb, name = 'repo', { remoteUrl, pushTo = false } = {}) 
   return dir;
 }
 
+export const FAKE_GH = path.join(here, 'fixtures', 'fake-gh.mjs');
+
+/**
+ * 가짜 gh를 준비한다. 돌려주는 env를 wc 실행에 넘기면 된다.
+ * state(): 가짜 GitHub의 현재 상태, setState(fn): 사용자가 GitHub 웹에서 고친 것처럼 상태를 바꾼다.
+ */
+export function fakeGh(sb, initial = {}) {
+  const dir = sb.dir('가짜 gh');
+  const stateFile = path.join(dir, 'state.json');
+  const logFile = path.join(dir, 'calls.log');
+  fs.writeFileSync(stateFile, JSON.stringify({ auth: true, defaultBranch: 'main', prs: [], issues: [], nextNumber: 1, ...initial }));
+  const read = () => JSON.parse(fs.readFileSync(stateFile, 'utf8'));
+  return {
+    env: { WHYCOMMIT_GH: FAKE_GH, FAKE_GH_STATE: stateFile, FAKE_GH_LOG: logFile },
+    state: read,
+    setState(fn) {
+      const s = read();
+      fn(s);
+      fs.writeFileSync(stateFile, JSON.stringify(s));
+    },
+    calls: () => (fs.existsSync(logFile) ? fs.readFileSync(logFile, 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l)) : []),
+  };
+}
+
+/** gh가 설치되지 않은 상황 (존재하지 않는 경로) */
+export const NO_GH = { WHYCOMMIT_GH: path.join(ROOT, 'no-such-gh.mjs') };
+
 /** 파일이 BOM 없는 UTF-8, LF인지 확인할 때 쓴다. */
 export function rawBytes(file) {
   return fs.readFileSync(file);

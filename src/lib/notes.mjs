@@ -298,6 +298,73 @@ export function recordReview(projectId, input) {
   };
 }
 
+/**
+ * 이의 제기로 판정을 바꾼다 (기획 6.2.8). 원칙 1에 따라 노트의 상태를 바꾸는 유일한 방법이다.
+ * - 이미 저장한 항목의 마지막 시도(지금 문제)만 바꿀 수 있다.
+ * - 문제당 한 번: 그 시도에 이미 이의 제기 기록이 있으면 거부한다.
+ * - 복습에서 바뀐 경우에는 그 복습이 올리거나 내린 횟수와 해결 날짜도 함께 되돌린다.
+ *
+ * input: {"outcome": "changed" | "kept", "updates": [{"id", "result", "status"?, "explanation"?}]}
+ * 일부만 맞음으로 둘로 나눈 문제는 두 항목을 함께 넘긴다.
+ */
+export function recordDispute(projectId, input) {
+  if (!input || !['changed', 'kept'].includes(input.outcome)) throw invalid('outcome must be "changed" or "kept".');
+  if (!Array.isArray(input.updates) || input.updates.length === 0) {
+    throw invalid('The input must include "updates": [{"id": ..., "result": ...}].');
+  }
+  const notes = loadNotes(projectId);
+  const targets = input.updates.map((u, i) => {
+    const entry = notes.entries.find((e) => e.id === u?.id);
+    if (!entry) throw new WcError('NOTE_NOT_FOUND', `No note with id "${u?.id}" in project ${projectId}.`);
+    const attempt = entry.attempts[entry.attempts.length - 1];
+    if (attempt.dispute) {
+      throw new WcError('ALREADY_DISPUTED', `Note "${entry.id}" was already disputed for this question. Only one dispute per question.`);
+    }
+    return { update: u, entry, attempt, where: `updates[${i}]` };
+  });
+
+  for (const { update, entry, attempt, where } of targets) {
+    const originalResult = attempt.result;
+    if (input.outcome === 'kept') {
+      attempt.dispute = { originalResult, outcome: 'kept' };
+      continue;
+    }
+    if (!RESULTS.includes(update.result)) throw invalid(`${where}.result must be one of: ${RESULTS.join(', ')}.`);
+    const status = resolveStatus(update.status, update.result, where);
+    const explanation =
+      update.explanation !== undefined ? text(update.explanation, `${where}.explanation`, { required: false }) || null : attempt.explanation;
+    if (status === 'not_understood' && !explanation) {
+      throw invalid(`${where}.explanation is required when the entry ends up not_understood.`);
+    }
+    attempt.result = update.result;
+    attempt.explanation = explanation;
+    attempt.dispute = { originalResult, outcome: 'changed' };
+    if (entry.status === status) continue;
+    if (attempt.source === 'review') {
+      // 그 복습이 한 일을 되돌린다.
+      if (status === 'understood') {
+        entry.wrongCount = Math.max(0, entry.wrongCount - 1);
+        entry.resolvedAt = today();
+      } else {
+        entry.wrongCount += 1;
+        entry.resolvedAt = null;
+      }
+    } else {
+      entry.wrongCount = status === 'not_understood' ? 1 : 0;
+      entry.resolvedAt = null;
+    }
+    entry.status = status;
+  }
+
+  const files = saveNotes(projectId, notes);
+  return {
+    outcome: input.outcome,
+    updated: targets.map(({ entry }) => ({ id: entry.id, status: entry.status, wrongCount: entry.wrongCount, resolvedAt: entry.resolvedAt })),
+    stats: countStatuses(notes.entries),
+    notesMd: files.md,
+  };
+}
+
 // ---- 복습 대상 고르기 ----
 
 const lastSeen = (e) => e.attempts[e.attempts.length - 1]?.date ?? e.createdAt;

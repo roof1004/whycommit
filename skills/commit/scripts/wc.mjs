@@ -18,10 +18,15 @@ import {
   printError,
   printOk,
 } from './lib/cli.mjs';
-import { commitContext, createCommit } from './lib/commit.mjs';
+import { learningTopics, parseDraft, renderBody, splitItems } from './lib/body.mjs';
+import { collectChanges } from './lib/changes.mjs';
+import { amendBody, commitContext, createCommit } from './lib/commit.mjs';
 import { loadConfig, publicConfig, setConfigValue, setWritingStyle, SETTABLE_KEYS } from './lib/config.mjs';
-import { currentBranch, git, pushStatus, repoTop, resolveCommit } from './lib/git.mjs';
-import { readJson, readText, writeJsonAtomic } from './lib/io.mjs';
+import { ghStatus, listOpenIssues } from './lib/gh.mjs';
+import { currentBranch, git, pushBranch, pushStatus, repoTop, resolveCommit } from './lib/git.mjs';
+import { readJson, readText, writeJsonAtomic, writeTextAtomic } from './lib/io.mjs';
+import { findPlanDocs } from './lib/plandoc.mjs';
+import { computeNewBody, createPrWithSection, findPrTemplates, prStatus, updatePrSection } from './lib/pr.mjs';
 import {
   addEntries,
   countStatuses,
@@ -29,6 +34,7 @@ import {
   loadNotes,
   notesFiles,
   pickForReview,
+  recordDispute,
   recordReview,
 } from './lib/notes.mjs';
 import {
@@ -81,6 +87,29 @@ Repository and commits
   range [--mode auto|pr|finish] [--ignore-recorded] [--default-branch NAME]
                                          Commits since the last quiz on this branch.
 
+Quiz and record
+  quiz changes --out FILE [--mode auto|pr|finish] [--default-branch NAME] [--ignore-recorded]
+                                         Commits, changed files (classified for skipping), diff and
+                                         TODO comments since the last quiz.
+  plan-doc find                          Remembered plan document and likely candidates.
+  draft split --file FILE --out FILE     Split user-written text into items (newlines and commas).
+  body render --file DRAFT --out FILE [--target pr|commit]
+                                         Render the record with the four fixed headings. Learning
+                                         topics are taken from the notes, never from DRAFT.
+
+GitHub and finishing
+  gh status                              Is gh installed and signed in? GitHub's default branch.
+  gh issues --out FILE [--limit N]       Open issues.
+  repo push                              Push the current branch (never forced).
+  pr template                            PR template files (paths relative to the repository).
+  pr status [--out-current FILE]         Open PR for this branch and the state of its whycommit section.
+  pr preview --section FILE --out FILE [--template PATH] [--offline] [--out-current FILE]
+  pr create --title-file FILE --section FILE --base BRANCH [--template PATH]
+  pr update --section FILE --expect-body-hash HASH [--confirm overwrite|append]
+  commit amend-body --file FILE [--dry-run --out FILE]
+                                         Finish mode: add the record to the last commit's body
+                                         (refused if the commit is already pushed).
+
 State (per branch)
   state get
   state set-last-quizzed [--sha SHA]     Default: HEAD of the current branch.
@@ -89,6 +118,8 @@ State (per branch)
 Notes
   notes add --file FILE                  Record quiz results. FILE: {"entries": [...]}
   notes review-result --file FILE        Record one review answer. FILE: {"id": ..., "attempt": {...}}
+  notes dispute --file FILE              Re-judge a saved answer after the user disputes it (once per
+                                         question). FILE: {"outcome": ..., "updates": [...]}
   notes list --out FILE [--status understood|not_understood|all]
   notes stats [--scope project|all]
   review pick --out FILE [--scope project|all] [--limit N]
@@ -119,6 +150,45 @@ function requireBranch(info) {
 
 function describeProject(info) {
   return { id: info.id, dir: info.dir, top: info.top, branch: info.branch, remote: info.remote, legacyLocal: info.legacyLocal };
+}
+
+/** PR 모드에 필요한 gh 상태. 준비가 안 됐으면 GH_NOT_READY. */
+function requireGhReady(info) {
+  const status = ghStatus(info.top, { isGitHub: info.remote?.isGitHub ?? false, withDefaultBranch: false });
+  if (!status.ready) {
+    let message = 'The remote repository is not on GitHub.';
+    if (!status.installed) message = 'GitHub CLI (gh) is not installed.';
+    else if (!status.authenticated) message = 'GitHub CLI (gh) is not signed in. The user can run: gh auth login';
+    throw new WcError('GH_NOT_READY', message, status);
+  }
+  return status;
+}
+
+/** 한 줄 제목 (PR 제목 등) */
+function readTitle(file) {
+  const title = readText(path.resolve(file), 'title file').trim();
+  if (!title || title.includes('\n')) throw new WcError('INVALID_INPUT', 'The title file must contain exactly one non-empty line.');
+  return title;
+}
+
+/** --template은 레포 기준 경로 (pr template이 알려 준 값을 그대로 쓴다). */
+function readTemplate(info, options) {
+  const given = getPathOption(options, 'template');
+  if (!given) return null;
+  const abs = path.resolve(info.top, given);
+  const rel = path.relative(info.top, abs);
+  if (rel.startsWith('..') || path.isAbsolute(rel)) {
+    throw new WcError('INVALID_INPUT', `The PR template must be inside the repository: ${abs}`);
+  }
+  return readText(abs, 'PR template');
+}
+
+function writeCurrentSection(options, status) {
+  const given = getPathOption(options, 'out-current');
+  if (!given || status.currentSection === null || status.currentSection === undefined) return null;
+  const out = resolveOutPath(given);
+  writeTextAtomic(out, `${status.currentSection}\n`);
+  return out;
 }
 
 /** 입력 파일에 project가 있으면 그것을, 없으면 지금 레포의 프로젝트를 쓴다. */
@@ -288,6 +358,15 @@ const commands = {
     },
   },
 
+  'notes dispute': {
+    options: ['file'],
+    run(o) {
+      const input = readJson(path.resolve(getPathOption(o, 'file', { required: true })), 'input file');
+      const project = projectFromInput(input);
+      return { project: project.id, ...recordDispute(project.id, input) };
+    },
+  },
+
   'notes list': {
     options: ['out', 'status'],
     run(o) {
@@ -405,6 +484,228 @@ const commands = {
     },
   },
 
+  'quiz changes': {
+    options: ['out', 'mode', 'default-branch', 'ignore-recorded', 'max-diff-chars'],
+    run(o) {
+      const out = resolveOutPath(getPathOption(o, 'out', { required: true }));
+      const info = requireProject();
+      const range = computeRange(info.top, info.id, {
+        branch: requireBranch(info),
+        mode: getChoice(o, 'mode', ['auto', 'pr', 'finish'], { fallback: 'auto' }),
+        ignoreRecorded: getFlag(o, 'ignore-recorded'),
+        defaultBranch: getString(o, 'default-branch'),
+      });
+      const maxDiffChars = getInt(o, 'max-diff-chars', { min: 1000, max: 10_000_000 });
+      const changes = collectChanges(info.top, range, maxDiffChars ? { maxDiffChars } : {});
+      writeJsonAtomic(out, changes);
+      const classes = {};
+      for (const f of changes.files) classes[f.class] = (classes[f.class] ?? 0) + 1;
+      return {
+        out,
+        project: info.id,
+        branch: range.branch,
+        mode: range.mode,
+        defaultBranch: range.defaultBranch,
+        reason: range.reason,
+        stale: range.stale,
+        base: range.base,
+        head: range.head,
+        count: range.count,
+        empty: range.empty,
+        fileCount: changes.files.length,
+        classes,
+        skipCandidate: changes.skipCandidate,
+        todoCount: changes.todos.length,
+        diffTruncated: changes.diffTruncated,
+      };
+    },
+  },
+
+  'plan-doc find': {
+    options: [],
+    run() {
+      const info = requireProject();
+      return { project: info.id, ...findPlanDocs(info.top, loadState(info.id).planDoc) };
+    },
+  },
+
+  'gh status': {
+    options: [],
+    run() {
+      const info = requireProject();
+      return ghStatus(info.top, { isGitHub: info.remote?.isGitHub ?? false });
+    },
+  },
+
+  'gh issues': {
+    options: ['out', 'limit'],
+    run(o) {
+      const out = resolveOutPath(getPathOption(o, 'out', { required: true }));
+      const info = requireProject();
+      requireGhReady(info);
+      const issues = listOpenIssues(info.top, getInt(o, 'limit', { min: 1, max: 200 }) ?? 50);
+      writeJsonAtomic(out, { issues });
+      return { out, count: issues.length };
+    },
+  },
+
+  'draft split': {
+    options: ['file', 'out'],
+    run(o) {
+      const out = resolveOutPath(getPathOption(o, 'out', { required: true }));
+      const items = splitItems(readText(path.resolve(getPathOption(o, 'file', { required: true })), 'input file'));
+      writeJsonAtomic(out, { items });
+      return { out, count: items.length };
+    },
+  },
+
+  'body render': {
+    options: ['file', 'target', 'out'],
+    run(o) {
+      const out = resolveOutPath(getPathOption(o, 'out', { required: true }));
+      const target = getChoice(o, 'target', ['pr', 'commit'], { fallback: 'pr' });
+      const raw = readJson(path.resolve(getPathOption(o, 'file', { required: true })), 'draft file');
+      const draft = parseDraft(raw);
+      const include = draft.learning.include ?? loadConfig().config.body.includeLearning;
+      let topics = null;
+      if (include) {
+        // 원칙 1: 이해한 / 이해하지 못한 내용은 학습 노트에서만 가져온다.
+        const project = projectFromInput(raw);
+        topics = learningTopics(loadNotes(project.id).entries, {
+          ids: draft.learning.ids,
+          branch: draft.learning.branch ?? project.branch,
+        });
+      }
+      const { text, sections } = renderBody(draft, topics, target);
+      if (!text) throw new WcError('EMPTY_BODY', 'Every section is empty, so there is nothing to write.');
+      writeTextAtomic(out, `${text}\n`);
+      return { out, target, includeLearning: include, sections };
+    },
+  },
+
+  'pr template': {
+    options: [],
+    run: () => ({ templates: findPrTemplates(requireRepoTop()) }),
+  },
+
+  'pr status': {
+    options: ['out-current'],
+    run(o) {
+      const info = requireProject();
+      const branch = requireBranch(info);
+      requireGhReady(info);
+      const s = prStatus(info.top, info.id, branch);
+      return {
+        branch,
+        exists: s.exists,
+        pr: s.pr,
+        otherPrs: s.otherPrs,
+        sectionState: s.sectionState,
+        needsConfirm: s.needsConfirm,
+        bodyHash: s.bodyHash,
+        currentSectionOut: writeCurrentSection(o, s),
+      };
+    },
+  },
+
+  'pr preview': {
+    options: ['section', 'template', 'offline', 'out', 'out-current'],
+    run(o) {
+      const out = resolveOutPath(getPathOption(o, 'out', { required: true }));
+      const info = requireProject();
+      const branch = requireBranch(info);
+      const sectionText = readText(path.resolve(getPathOption(o, 'section', { required: true })), 'section file');
+      const templateText = readTemplate(info, o);
+      const offline = getFlag(o, 'offline');
+      let status = { exists: false, pr: null, otherPrs: [], sectionState: null, needsConfirm: null, bodyHash: null };
+      if (!offline) {
+        requireGhReady(info);
+        status = prStatus(info.top, info.id, branch);
+      }
+      writeTextAtomic(out, computeNewBody(status, sectionText, status.exists ? null : templateText));
+      return {
+        out,
+        branch,
+        offline,
+        action: status.exists ? 'update' : 'create',
+        pr: status.pr,
+        otherPrs: status.otherPrs,
+        sectionState: status.sectionState,
+        needsConfirm: status.needsConfirm,
+        bodyHash: status.bodyHash,
+        templateUsed: Boolean(templateText) && !status.exists,
+        currentSectionOut: writeCurrentSection(o, status),
+      };
+    },
+  },
+
+  'pr create': {
+    options: ['title-file', 'section', 'template', 'base'],
+    run(o) {
+      const info = requireProject();
+      const branch = requireBranch(info);
+      requireGhReady(info);
+      const result = createPrWithSection(info.top, info.id, {
+        branch,
+        base: getString(o, 'base', { required: true }),
+        title: readTitle(getPathOption(o, 'title-file', { required: true })),
+        sectionText: readText(path.resolve(getPathOption(o, 'section', { required: true })), 'section file'),
+        templateText: readTemplate(info, o),
+      });
+      return { branch, ...result };
+    },
+  },
+
+  'pr update': {
+    options: ['section', 'expect-body-hash', 'confirm'],
+    run(o) {
+      const info = requireProject();
+      const branch = requireBranch(info);
+      requireGhReady(info);
+      const result = updatePrSection(info.top, info.id, {
+        branch,
+        sectionText: readText(path.resolve(getPathOption(o, 'section', { required: true })), 'section file'),
+        expectHash: getString(o, 'expect-body-hash', { required: true }),
+        confirm: getChoice(o, 'confirm', ['overwrite', 'append']),
+      });
+      return { branch, ...result };
+    },
+  },
+
+  'repo push': {
+    options: [],
+    run() {
+      const info = requireProject();
+      const branch = requireBranch(info);
+      if (!info.remote) throw new WcError('NO_REMOTE', 'This repository has no remote to push to.');
+      return pushBranch(info.top, info.remote.name, branch);
+    },
+  },
+
+  'commit amend-body': {
+    options: ['file', 'dry-run', 'out'],
+    run(o) {
+      const info = requireProject();
+      const branch = requireBranch(info);
+      const dryRun = getFlag(o, 'dry-run');
+      const outOption = getPathOption(o, 'out');
+      if (dryRun && !outOption) throw new UsageError('--dry-run needs --out FILE to write the preview to.');
+      const result = amendBody(info.top, readText(path.resolve(getPathOption(o, 'file', { required: true })), 'body file'), {
+        dryRun,
+      });
+      if (dryRun) {
+        const out = resolveOutPath(outOption);
+        writeTextAtomic(out, result.message);
+        return { dryRun: true, sha: result.oldSha, out };
+      }
+      // 커밋이 바뀌었으니 "마지막으로 퀴즈를 본 커밋"도 새 커밋으로 옮긴다.
+      const state = loadState(info.id);
+      setLastQuizzed(state, branch, result.newSha);
+      saveState(info.id, state);
+      return { dryRun: false, oldSha: result.oldSha, newSha: result.newSha, lastQuizzed: result.newSha };
+    },
+  },
+
   'tmp clean': {
     options: ['dir'],
     run(o) {
@@ -423,7 +724,7 @@ const commands = {
   },
 };
 
-const BOOLEAN_FLAGS = new Set(['none', 'help', 'ignore-recorded']);
+const BOOLEAN_FLAGS = new Set(['none', 'help', 'ignore-recorded', 'offline', 'dry-run']);
 
 function main(argv) {
   const major = Number(process.versions.node.split('.')[0]);

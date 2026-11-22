@@ -70,6 +70,26 @@ export function remoteUrl(cwd, name) {
   return r.ok ? r.stdout.trim() : null;
 }
 
+const tail = (text, n = 4000) => (text.length > n ? `...${text.slice(-n)}` : text).trim();
+
+/**
+ * 브랜치를 푸시한다 (원칙 4: 강제 푸시는 절대 하지 않는다).
+ * --force, --force-with-lease, "+" refspec을 쓰지 않는다. 원격이 앞서 있으면 거절된 그대로 알린다.
+ */
+export function pushBranch(top, remote, branch) {
+  const r = git(['push', '-u', remote, `refs/heads/${branch}:refs/heads/${branch}`], { cwd: top, allowFail: true });
+  if (r.ok) return { remote, branch };
+  const output = `${r.stderr}\n${r.stdout}`;
+  if (/\[rejected\]|non-fast-forward|fetch first|\[remote rejected\]/i.test(output)) {
+    throw new WcError(
+      'PUSH_REJECTED',
+      'The remote rejected the push (it has commits this branch does not have). Never force push. Ask the user to pull or rebase first.',
+      { output: tail(output) },
+    );
+  }
+  throw new WcError('PUSH_FAILED', 'git push failed.', { output: tail(output) });
+}
+
 /**
  * 커밋이 이미 푸시됐는지 확인한다 (커밋을 수정하기 전 안전장치).
  * 원격 추적 브랜치(refs/remotes/...) 중 하나라도 이 커밋을 포함하면 푸시된 것으로 본다.
