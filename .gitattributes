@@ -1,0 +1,11 @@
+# 모든 텍스트 파일은 저장소에도, 체크아웃한 작업 폴더에도 LF로 둔다.
+# Windows의 core.autocrlf 설정과 관계없이 같은 바이트가 되도록 고정한다.
+* text=auto eol=lf
+
+# 바이너리 파일은 줄바꿈 변환 대상이 아니다.
+*.png  binary
+*.jpg  binary
+*.jpeg binary
+*.gif  binary
+*.ico  binary
+*.zip  binary

@@ -1,0 +1,14 @@
+{
+  "name": "whycommit",
+  "private": true,
+  "description": "커밋과 PR 시점에 에이전트가 면접 질문처럼 물어서 자기 코드를 이해하고 넘어가게 하는 학습 도구",
+  "license": "MIT",
+  "author": "roof1004",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/roof1004/whycommit.git"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
