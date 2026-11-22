@@ -189,6 +189,7 @@ claude plugin update whycommit@whycommit
 ```text
 whycommit/
 ├── config.json              설정
+├── tmp/                     실행 중에만 쓰는 임시 파일 (끝나면 지워짐)
 └── projects/
     └── <owner>/<repo>/      프로젝트마다 하나
         ├── notes.md         읽기용 학습 노트

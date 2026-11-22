@@ -18,8 +18,9 @@ import {
   printError,
   printOk,
 } from './lib/cli.mjs';
+import { commitContext, createCommit } from './lib/commit.mjs';
 import { loadConfig, publicConfig, setConfigValue, setWritingStyle, SETTABLE_KEYS } from './lib/config.mjs';
-import { currentBranch, pushStatus, repoTop, resolveCommit } from './lib/git.mjs';
+import { currentBranch, git, pushStatus, repoTop, resolveCommit } from './lib/git.mjs';
 import { readJson, readText, writeJsonAtomic } from './lib/io.mjs';
 import {
   addEntries,
@@ -30,9 +31,20 @@ import {
   pickForReview,
   recordReview,
 } from './lib/notes.mjs';
-import { configPath, dataHome, findEnclosingWorkTree, resolveOutPath, tmpDir } from './lib/paths.mjs';
+import {
+  configPath,
+  createRunDir,
+  dataHome,
+  findEnclosingWorkTree,
+  pruneStaleTmp,
+  removeRunDir,
+  resolveOutPath,
+  tmpRoot,
+} from './lib/paths.mjs';
 import { migrateLocal, projectInfo, validateProjectId } from './lib/project.mjs';
+import { computeRange } from './lib/range.mjs';
 import { getLastQuizzed, loadState, saveState, setLastQuizzed } from './lib/state.mjs';
+import { workingTreeStatus } from './lib/worktree.mjs';
 
 const MIN_NODE_MAJOR = 18;
 
@@ -48,6 +60,8 @@ command failed (see error.code); 2 means the command was used incorrectly.
 Setup
   env                                    Paths, repository, project and settings.
                                          Creates the data folder and default config on first run.
+                                         Also creates a fresh tmpDir for this run.
+  tmp clean --dir TMPDIR                 Delete this run's tmpDir. Call it when the skill ends.
   project info                           Which project the current repository maps to.
   project migrate-local                  Move notes saved under _local/<folder> to the
                                          remote-based project (ask the user first).
@@ -57,6 +71,15 @@ Settings
                                          including the writing style text.
   config set --key KEY --value VALUE     KEY: ${SETTABLE_KEYS.join(', ')}
   config set-style --file FILE           Save the writing style (an empty file clears it).
+
+Repository and commits
+  repo status                            Staged, unstaged, untracked and conflicted files.
+  repo stage-all                         Stage everything (git add -A). Ask the user first.
+  commit context --out FILE              Staged diff, recent commit subjects and format hints.
+  commit create --file FILE              Commit with the one-line title in FILE (empty body).
+                                         Also reports how many commits have not been quizzed.
+  range [--mode auto|pr|finish] [--ignore-recorded] [--default-branch NAME]
+                                         Commits since the last quiz on this branch.
 
 State (per branch)
   state get
@@ -116,8 +139,10 @@ const commands = {
       const home = dataHome();
       const enclosingRepo = findEnclosingWorkTree(home);
       let settings = null;
+      let runDir = null;
       if (!enclosingRepo) {
-        fs.mkdirSync(tmpDir(), { recursive: true });
+        pruneStaleTmp();
+        runDir = createRunDir();
         const { config, created, warnings } = loadConfig();
         settings = { ...publicConfig(config), created, warnings };
       }
@@ -134,7 +159,7 @@ const commands = {
         dataHome: home,
         dataHomeSafe: !enclosingRepo,
         ...(enclosingRepo ? { dataHomeRepository: enclosingRepo } : {}),
-        tmpDir: tmpDir(),
+        tmpDir: runDir,
         configPath: configPath(),
         config: settings,
         repo,
@@ -309,6 +334,85 @@ const commands = {
     },
   },
 
+  'repo status': {
+    options: [],
+    run() {
+      const top = requireRepoTop();
+      const status = workingTreeStatus(top);
+      const clean = Object.values(status).every((list) => list.length === 0);
+      return { top, branch: currentBranch(top), ...status, clean };
+    },
+  },
+
+  'repo stage-all': {
+    options: [],
+    run() {
+      const top = requireRepoTop();
+      const before = workingTreeStatus(top);
+      if (before.conflicts.length > 0) {
+        // git add -A는 충돌을 "해결됨"으로 표시해 버리므로 막는다.
+        throw new WcError('MERGE_CONFLICTS', 'Resolve the merge conflicts before staging.', { conflicts: before.conflicts });
+      }
+      git(['add', '-A'], { cwd: top });
+      return { staged: workingTreeStatus(top).staged };
+    },
+  },
+
+  'commit context': {
+    options: ['out', 'max-diff-chars'],
+    run(o) {
+      const out = resolveOutPath(getPathOption(o, 'out', { required: true }));
+      const top = requireRepoTop();
+      const maxDiffChars = getInt(o, 'max-diff-chars', { min: 1000, max: 10_000_000 });
+      const context = commitContext(top, maxDiffChars ? { maxDiffChars } : {});
+      writeJsonAtomic(out, context);
+      return {
+        out,
+        stagedCount: context.staged.length,
+        hasHistory: context.hasHistory,
+        diffTruncated: context.diffTruncated,
+      };
+    },
+  },
+
+  'commit create': {
+    options: ['file'],
+    run(o) {
+      const file = path.resolve(getPathOption(o, 'file', { required: true }));
+      const info = requireProject();
+      const result = createCommit(info.top, readText(file, 'title file'));
+      const range = computeRange(info.top, info.id, { branch: info.branch });
+      return {
+        ...result,
+        unquizzed: { count: range.count, mode: range.mode, reason: range.reason, stale: range.stale },
+      };
+    },
+  },
+
+  range: {
+    options: ['mode', 'ignore-recorded', 'default-branch'],
+    run(o) {
+      const info = requireProject();
+      return {
+        project: info.id,
+        ...computeRange(info.top, info.id, {
+          branch: requireBranch(info),
+          mode: getChoice(o, 'mode', ['auto', 'pr', 'finish'], { fallback: 'auto' }),
+          ignoreRecorded: getFlag(o, 'ignore-recorded'),
+          defaultBranch: getString(o, 'default-branch'),
+        }),
+      };
+    },
+  },
+
+  'tmp clean': {
+    options: ['dir'],
+    run(o) {
+      const dir = path.resolve(getPathOption(o, 'dir', { required: true }));
+      return { removed: removeRunDir(dir), dir, tmpRoot: tmpRoot() };
+    },
+  },
+
   'git pushed': {
     options: ['rev'],
     run(o) {
@@ -319,7 +423,7 @@ const commands = {
   },
 };
 
-const BOOLEAN_FLAGS = new Set(['none', 'help']);
+const BOOLEAN_FLAGS = new Set(['none', 'help', 'ignore-recorded']);
 
 function main(argv) {
   const major = Number(process.versions.node.split('.')[0]);
