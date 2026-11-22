@@ -10,5 +10,10 @@
   },
   "engines": {
     "node": ">=18"
+  },
+  "scripts": {
+    "test": "node test/run.mjs",
+    "sync": "node tools/sync-scripts.mjs",
+    "sync:check": "node tools/sync-scripts.mjs --check"
   }
 }
