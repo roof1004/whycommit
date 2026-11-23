@@ -1,0 +1,16 @@
+{
+  "name": "whycommit",
+  "description": "whycommit: 커밋과 PR 때 자기 코드를 묻는 학습 도구",
+  "owner": {
+    "name": "roof1004",
+    "url": "https://github.com/roof1004"
+  },
+  "plugins": [
+    {
+      "name": "whycommit",
+      "source": "./",
+      "description": "커밋과 PR 시점에 에이전트가 면접 질문처럼 물어서 자기 코드를 이해하고 넘어가게 하는 학습 도구",
+      "category": "learning"
+    }
+  ]
+}

@@ -114,51 +114,80 @@ src/auth/session.js의 refreshPromise 변수를 지우면 어떤 일이 생기�
 ## 필요한 것
 
 - **git**
-- **Claude Code**
-- **Node.js 18 이상**: 학습 노트와 상태를 다루는 스크립트를 실행합니다. 외부 패키지는 설치하지 않습니다. Node.js가 없으면 스킬이 설치 방법을 안내하고 멈춥니다.
+- **Claude Code**: 플러그인으로 설치할 때. 다른 에이전트는 [지원 에이전트](#지원-에이전트)를 보세요.
+- **Node.js 18 이상**: 학습 노트와 상태를 다루는 스크립트를 실행합니다. 외부 패키지는 설치하지 않습니다. `node --version`으로 확인할 수 있고, 없으면 스킬이 설치 방법을 안내하고 멈춥니다.
 - **GitHub CLI(`gh`), 로그인 상태**: PR 모드에서만 필요합니다. 없으면 마무리 모드로 진행하거나 PR 본문만 만들어 볼 수 있습니다.
+  - 설치: `winget install --id GitHub.cli` (Windows), `brew install gh` (macOS)
+  - 로그인: `gh auth login`
 
 ## 설치
 
-<!-- TODO(6단계): 실제 설치를 확인한 뒤 명령과 버전 조건을 확정한다. -->
+<!-- TODO(GitHub 공개 후): roof1004/whycommit에서 실제로 설치되는지 확인한다. 로컬 마켓플레이스로는 확인함. -->
 
 ### Claude Code 플러그인 (추천)
 
-Claude Code v2.1.292 이상이면 터미널에서 한 줄로 설치합니다.
+터미널에서 두 줄로 설치합니다.
 
 ```sh
-claude plugin install whycommit --marketplace roof1004/whycommit
+claude plugin marketplace add roof1004/whycommit
+claude plugin install whycommit@whycommit
 ```
 
-그보다 낮은 버전이면 Claude Code 안에서 두 줄로 설치합니다.
+Claude Code 안에서 설치해도 됩니다.
 
 ```text
 /plugin marketplace add roof1004/whycommit
 /plugin install whycommit@whycommit
 ```
 
-설치하면 `/whycommit:commit`, `/whycommit:quiz`, `/whycommit:review`로 부를 수 있습니다.
+Claude Code v2.1.292 이상이면 한 줄로도 됩니다.
+
+```sh
+claude plugin install whycommit --marketplace roof1004/whycommit
+```
+
+설치한 뒤 Claude Code를 다시 시작하거나 `/reload-plugins`를 실행하면 `/whycommit:commit`, `/whycommit:quiz`, `/whycommit:review`로 부를 수 있습니다. 기본으로는 모든 프로젝트에서 켜집니다. 한 프로젝트에서만 쓰려면 그 프로젝트 폴더에서 두 명령에 `--scope project`를 붙이세요.
 
 ### 플러그인 없이 (Agent Skills 표준 스킬로)
 
+플러그인을 쓰지 않거나, 다른 에이전트에서 쓸 때의 방법입니다.
+
 ```sh
 git clone https://github.com/roof1004/whycommit.git
-node whycommit/tools/install-skills.mjs --dest <스킬 폴더>
+node whycommit/tools/install-skills.mjs --dest ~/.claude/skills   # Claude Code
+node whycommit/tools/install-skills.mjs --dest ~/.agents/skills   # .agents/skills를 읽는 에이전트
 ```
 
-스킬은 `whycommit-commit`, `whycommit-quiz`, `whycommit-review`라는 이름으로 설치됩니다. `commit`, `review` 같은 짧은 이름은 다른 스킬이나 에이전트의 내장 명령과 겹치기 쉽기 때문입니다. 예를 들어 Claude Code에서 `/review`는 이미 내장 명령입니다.
-
-<!-- TODO(6단계): install-skills.mjs 사용법과, Claude Code에서 ~/.claude/skills/whycommit 에 clone해 플러그인으로 바로 쓰는 방법을 확인 후 추가한다. -->
+- 스킬은 `whycommit-commit`, `whycommit-quiz`, `whycommit-review`라는 이름으로 설치됩니다. `commit`, `review` 같은 짧은 이름은 다른 스킬이나 에이전트의 내장 명령과 겹치기 쉽기 때문입니다. 예를 들어 Claude Code에서 `/review`는 이미 내장 명령입니다.
+- 같은 이름의 다른 스킬이 이미 있으면 아무것도 설치하지 않고 멈춥니다. 다른 접두사를 쓰려면 `--prefix my-`, 그래도 바꾸려면 `--force`를 붙입니다.
+- `--dry-run`을 붙이면 어디에 설치될지만 보여 줍니다.
+- 업데이트는 `git pull` 뒤에 같은 명령을 다시 실행하면 됩니다.
 
 ### 업데이트
 
-<!-- TODO(6단계): 업데이트 명령 확인 -->
-
-직접 만든 마켓플레이스는 자동 업데이트가 기본으로 꺼져 있습니다. 새 버전이 나오면 다음 명령으로 업데이트합니다.
+직접 만든 마켓플레이스는 자동 업데이트가 기본으로 꺼져 있습니다. 새 버전이 나오면 업데이트합니다.
 
 ```sh
+claude plugin marketplace update whycommit
 claude plugin update whycommit@whycommit
 ```
+
+`/plugin`의 Marketplaces 화면에서 자동 업데이트를 켤 수도 있습니다.
+
+### 지우기
+
+```sh
+claude plugin uninstall whycommit@whycommit
+claude plugin marketplace remove whycommit
+```
+
+학습 노트(`~/whycommit`)는 지워지지 않습니다. 필요 없으면 그 폴더를 직접 지우세요.
+
+### 문제 해결
+
+- **`gh`나 `node`를 설치했는데 명령을 못 찾는다**: 설치하기 전에 열려 있던 터미널과 편집기는 예전 PATH를 계속 씁니다. VS Code 같은 편집기는 창을 모두 닫고 다시 켜세요. 편집기 안에서 새 터미널 탭만 여는 것으로는 안 됩니다.
+- **`marketplace add`가 SSH 오류로 실패한다**: GitHub SSH 키가 없으면 환경변수 `CLAUDE_CODE_PLUGIN_PREFER_HTTPS=1`을 설정하고 다시 실행하세요.
+- **스크립트를 실행할 때마다 권한을 묻는다**: whycommit은 `node .../wc.mjs` 명령으로 기록을 다룹니다. 권한 확인 창에서 이 명령을 계속 허용하도록 고를 수 있습니다.
 
 ## 사용법
 
@@ -244,18 +273,25 @@ whycommit/
 
 ## 레포 구조
 
-<!-- TODO(3~6단계): 파일이 생기는 대로 갱신한다. -->
-
 ```text
 whycommit/
-├── .claude-plugin/       Claude Code 플러그인과 마켓플레이스 매니페스트
-├── skills/               Agent Skills 표준 스킬 (commit, quiz, review)
-├── src/                  스크립트 원본. 고칠 때는 여기만 고칩니다
-├── shared/               여러 스킬이 함께 쓰는 문서의 원본 (채점 기준)
-├── tools/                스킬 폴더 동기화, 표준 스킬 설치 도구
-├── test/                 스크립트 테스트
-└── docs/plan.md          기획 문서
+├── .claude-plugin/
+│   ├── plugin.json        플러그인 매니페스트 (버전은 여기 한 곳에만)
+│   └── marketplace.json   같은 레포를 마켓플레이스로 쓰기 위한 목록
+├── skills/                Agent Skills 표준 스킬
+│   ├── commit/            SKILL.md, scripts/
+│   ├── quiz/              SKILL.md, scripts/, references/
+│   └── review/            SKILL.md, scripts/, references/
+├── src/                   스크립트 원본. 고칠 때는 여기만 고칩니다
+├── shared/                여러 스킬이 함께 쓰는 문서의 원본 (채점 기준)
+├── tools/
+│   ├── sync-skills.mjs    원본을 스킬 폴더로 복사
+│   └── install-skills.mjs 플러그인 없이 표준 스킬로 설치
+├── test/                  스크립트·스킬 형식 테스트
+└── docs/plan.md           기획 문서
 ```
+
+버전을 올릴 때는 `.claude-plugin/plugin.json`의 `version`만 바꿉니다. 버전이 같으면 이미 설치한 사람에게 업데이트가 가지 않습니다.
 
 ## 개발
 
