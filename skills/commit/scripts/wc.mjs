@@ -24,7 +24,7 @@ import { amendBody, commitContext, createCommit } from './lib/commit.mjs';
 import { loadConfig, publicConfig, setConfigValue, setWritingStyle, SETTABLE_KEYS } from './lib/config.mjs';
 import { ghStatus, listOpenIssues } from './lib/gh.mjs';
 import { currentBranch, git, pushBranch, pushStatus, repoTop, resolveCommit } from './lib/git.mjs';
-import { readJson, readText, writeJsonAtomic, writeTextAtomic } from './lib/io.mjs';
+import { canonicalPath, readJson, readText, writeJsonAtomic, writeTextAtomic } from './lib/io.mjs';
 import { findPlanDocs } from './lib/plandoc.mjs';
 import { computeNewBody, createPrWithSection, findPrTemplates, prStatus, updatePrSection } from './lib/pr.mjs';
 import {
@@ -175,7 +175,8 @@ function readTitle(file) {
 function readTemplate(info, options) {
   const given = getPathOption(options, 'template');
   if (!given) return null;
-  const abs = path.resolve(info.top, given);
+  // info.top은 진짜 경로이므로 비교할 쪽도 같은 모양으로 맞춘다.
+  const abs = canonicalPath(path.resolve(info.top, given));
   const rel = path.relative(info.top, abs);
   if (rel.startsWith('..') || path.isAbsolute(rel)) {
     throw new WcError('INVALID_INPUT', `The PR template must be inside the repository: ${abs}`);
@@ -323,7 +324,7 @@ const commands = {
       if (none === Boolean(given)) throw new UsageError('Give either --path FILE or --none.');
       let planDoc = { path: null };
       if (given) {
-        const abs = path.resolve(given);
+        const abs = canonicalPath(given);
         const rel = path.relative(info.top, abs);
         if (rel === '' || rel.startsWith('..') || path.isAbsolute(rel)) {
           throw new WcError('INVALID_INPUT', `The plan document must be inside the repository: ${abs}`);

@@ -3,8 +3,8 @@
 
 import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
-import path from 'node:path';
 import { WcError } from './cli.mjs';
+import { canonicalPath } from './io.mjs';
 
 /**
  * @param {string[]} args git 인자
@@ -42,10 +42,10 @@ export function git(args, { cwd, allowFail = false, input, unsetEnv = [] } = {})
 
 const lines = (text) => text.split('\n').map((l) => l.trim()).filter(Boolean);
 
-/** 레포 최상위 폴더. 레포가 아니면 null. */
+/** 레포 최상위 폴더 (진짜 경로). 레포가 아니면 null. */
 export function repoTop(cwd) {
   const r = git(['rev-parse', '--show-toplevel'], { cwd, allowFail: true });
-  return r.ok ? path.resolve(r.stdout.trim()) : null;
+  return r.ok ? canonicalPath(r.stdout.trim()) : null;
 }
 
 /** 현재 브랜치 이름. HEAD가 브랜치가 아니면(detached) null. */

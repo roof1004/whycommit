@@ -10,6 +10,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { WcError } from './cli.mjs';
 import { git } from './git.mjs';
+import { canonicalPath } from './io.mjs';
 
 export function dataHome() {
   const override = process.env.WHYCOMMIT_HOME;
@@ -47,7 +48,7 @@ export function findEnclosingWorkTree(p) {
   const inside = git(['rev-parse', '--is-inside-work-tree'], opts);
   if (!inside.ok || inside.stdout.trim() !== 'true') return null;
   const top = git(['rev-parse', '--show-toplevel'], opts);
-  return top.ok ? path.resolve(top.stdout.trim()) : dir;
+  return top.ok ? canonicalPath(top.stdout.trim()) : dir;
 }
 
 let dataHomeVerified = false;
@@ -130,8 +131,8 @@ export function createRunDir() {
 
 /** tmp/run-* 폴더 하나를 지운다. 그 밖의 경로는 절대 지우지 않는다. */
 export function removeRunDir(dir) {
-  const abs = path.resolve(dir);
-  const rel = path.relative(tmpRoot(), abs);
+  const abs = canonicalPath(dir);
+  const rel = path.relative(canonicalPath(tmpRoot()), abs);
   const isRunDir = rel !== '' && !rel.startsWith('..') && !path.isAbsolute(rel) && !rel.includes(path.sep) && rel.startsWith(RUN_PREFIX);
   if (!isRunDir) {
     throw new WcError('INVALID_INPUT', `Only run folders inside ${tmpRoot()} can be removed: ${abs}`);

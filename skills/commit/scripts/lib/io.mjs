@@ -6,6 +6,29 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { WcError } from './cli.mjs';
 
+/**
+ * 경로를 "진짜 경로" 하나의 모양으로 맞춘다. 두 경로가 같은 폴더인지 비교하기 전에 쓴다.
+ * 같은 폴더도 Windows의 8.3 짧은 이름(C:\Users\RUNNER~1), macOS의 /var 와 /private/var,
+ * 심볼릭 링크나 junction 때문에 다르게 보일 수 있고, git은 진짜 경로를 돌려준다.
+ * 아직 없는 경로는 있는 부분까지만 맞추고 나머지를 이어 붙인다.
+ */
+export function canonicalPath(p) {
+  const abs = path.resolve(p);
+  let existing = abs;
+  const rest = [];
+  while (!fs.existsSync(existing)) {
+    const parent = path.dirname(existing);
+    if (parent === existing) return abs;
+    rest.unshift(path.basename(existing));
+    existing = parent;
+  }
+  try {
+    return path.join(fs.realpathSync.native(existing), ...rest);
+  } catch {
+    return abs;
+  }
+}
+
 export function normalizeNewlines(text) {
   return text.replace(/\r\n?/g, '\n');
 }

@@ -47,7 +47,8 @@ test('원격이 없으면 _local/<폴더 이름> (한글과 공백 그대로)', 
   fs.mkdirSync(sub, { recursive: true });
   const out = wcOk(sb, ['project', 'info'], { cwd: sub });
   assert.equal(out.project.id, `_local/내 레포 ${KO}`);
-  assert.equal(out.project.top, repo);
+  // git은 진짜 경로를 돌려준다 (macOS의 /private/var, Windows의 8.3 짧은 이름 등이 풀린 모양)
+  assert.equal(out.project.top, fs.realpathSync.native(repo));
 });
 
 test('origin이 없으면 이름순 첫 원격을 쓴다', (t) => {
