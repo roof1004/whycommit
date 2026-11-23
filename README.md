@@ -122,8 +122,6 @@ src/auth/session.js의 refreshPromise 변수를 지우면 어떤 일이 생기�
 
 ## 설치
 
-<!-- TODO(GitHub 공개 후): roof1004/whycommit에서 실제로 설치되는지 확인한다. 로컬 마켓플레이스로는 확인함. -->
-
 ### Claude Code 플러그인 (추천)
 
 터미널에서 두 줄로 설치합니다.
@@ -247,16 +245,16 @@ whycommit/
 
 ## 동작을 확인한 환경
 
-<!-- TODO(7단계): 검증이 끝나면 결과로 바꾼다. -->
+| 환경 | 스크립트 테스트 (CI) | 스킬을 실제로 실행 (Claude Code) |
+|---|---|---|
+| macOS (zsh, bash) | ✅ | 아직 |
+| Windows PowerShell 5.1 | ✅ | ✅ |
+| Windows Git Bash | ✅ | ✅ (같은 Windows에서) |
+| Linux (Node 18, 24) | ✅ | 아직 |
 
-| 환경 | 상태 |
-|---|---|
-| macOS (zsh, bash) | 확인 예정 |
-| Windows PowerShell | 확인 예정 |
-| Windows Git Bash | 확인 예정 |
-| Linux | 확인 예정 |
-
-스크립트 테스트는 GitHub Actions에서 위 네 환경으로 자동 실행합니다.
+- 스크립트 테스트는 GitHub Actions에서 위 환경마다 같은 코드로 자동 실행합니다. 공백과 한글이 들어간 경로, 한글 내용의 저장과 읽기, 줄바꿈 유지를 포함하고, 셸에서 스크립트를 직접 불러 경로가 제대로 넘어가는지도 확인합니다.
+- 스킬은 Windows의 Claude Code(v2.1.258)에서 커밋, 퀴즈(마무리 모드, 이의 제기, 중단, 건너뛰기, 직접 쓰기, 스타일 저장), 복습(프로젝트 범위, 전체 범위)을 실제로 돌려 확인했습니다.
+- PR 모드는 테스트용 GitHub CLI로 확인했고, 실제 GitHub에서의 확인은 진행 중입니다.
 
 ## 한계
 
@@ -266,9 +264,9 @@ whycommit/
 
 ## 지원 에이전트
 
-<!-- TODO(7단계): 검증 후 "Claude Code에서 검증함"으로 바꾼다. -->
+<!-- TODO(PR 모드 실제 GitHub 확인 후): "PR 모드는 확인 중" 문구를 지운다. -->
 
-- **Claude Code**: 첫 버전은 Claude Code에서 검증합니다.
+- **Claude Code**: Claude Code에서 검증했습니다 (PR 모드의 실제 GitHub 연동은 확인 중).
 - **Codex 등 다른 에이전트**: 표준 형식([Agent Skills](https://agentskills.io))으로 만들어서 동작할 가능성이 높지만, 아직 확인하지 못했습니다. 테스트 결과를 이슈로 알려 주시면 반영하겠습니다.
 
 ## 레포 구조
