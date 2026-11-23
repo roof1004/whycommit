@@ -8,19 +8,31 @@
 //
 //   src/                            → skills/<SKILL.md가 있는 모든 스킬>/scripts/
 //   shared/references/grading.md    → skills/quiz/references/, skills/review/references/
+//
+// Copies the sources into each skill folder.
+//
+//   node tools/sync-skills.mjs           copy (script files that exist only in a copy are removed)
+//   node tools/sync-skills.mjs --check   exit code 1 if anything is out of sync (for CI)
+//
+// Why keep copies: in the Agent Skills standard, a skill must not refer to anything outside its own folder.
+// So every skill has to carry the files it needs, and the sources are edited in one place only.
+//
+//   src/                            → skills/<every skill that has a SKILL.md>/scripts/
+//   shared/references/grading.md    → skills/quiz/references/, skills/review/references/
 
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 // 여러 스킬이 함께 쓰는 문서: 원본 경로 → 복사할 스킬들 (스킬 폴더 안의 같은 상대 경로로)
+// Documents shared by several skills: source path → skills to copy it to (at the same relative path in each skill folder)
 const SHARED = {
   'references/grading.md': ['quiz', 'review'],
 };
 
 function parse(argv) {
   const check = argv.includes('--check');
-  const rootIndex = argv.indexOf('--root'); // 테스트용
+  const rootIndex = argv.indexOf('--root'); // 테스트용 / For tests
   const root =
     rootIndex !== -1
       ? path.resolve(argv[rootIndex + 1])
@@ -28,7 +40,7 @@ function parse(argv) {
   return { check, root };
 }
 
-/** 폴더 안의 모든 파일을 "a/b.mjs" 같은 상대 경로로 돌려준다. */
+/** 폴더 안의 모든 파일을 "a/b.mjs" 같은 상대 경로로 돌려준다. / Returns every file in the folder as a relative path such as "a/b.mjs". */
 function listFiles(dir) {
   const out = [];
   const walk = (current, prefix) => {
@@ -67,7 +79,7 @@ function main() {
   let copied = 0;
   let removed = 0;
 
-  /** 원본 하나를 대상 하나로 맞춘다. */
+  /** 원본 하나를 대상 하나로 맞춘다. / Brings one target in line with one source. */
   const syncFile = (from, to, label) => {
     const same = fs.existsSync(to) && fs.readFileSync(from).equals(fs.readFileSync(to));
     if (same) return;
@@ -81,6 +93,7 @@ function main() {
   };
 
   // 1. 스크립트: 모든 스킬
+  // 1. Scripts: every skill
   for (const skill of skills) {
     const target = path.join(root, 'skills', skill, 'scripts');
     for (const rel of sourceFiles) {
@@ -98,6 +111,7 @@ function main() {
   }
 
   // 2. 함께 쓰는 문서: 정해진 스킬만 (그 스킬이 있을 때)
+  // 2. Shared documents: only the listed skills (when that skill exists)
   for (const [rel, targets] of Object.entries(SHARED)) {
     const from = path.join(root, 'shared', ...toNative(rel));
     if (!fs.existsSync(from)) {

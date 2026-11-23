@@ -4,12 +4,19 @@
 // - 인자는 ASCII 옵션과 경로만 받는다. 질문·답·해설 같은 내용은 UTF-8 파일로 받는다.
 // - 결과는 stdout에 JSON 하나로 낸다. 성공은 종료 코드 0, 실패는 0이 아닌 값이다.
 // - 사람이 읽을 내용(한글 등)은 stdout에 싣지 않고 --out 파일로 쓴다.
+//
+// Command-line argument parsing, JSON output and the error format.
+//
+// Rules (spec 9.1):
+// - Arguments are only ASCII options and paths. Content such as questions, answers and explanations comes in UTF-8 files.
+// - The result goes to stdout as a single JSON value. Success exits with code 0, failure with a non-zero code.
+// - Human-readable content (Korean text, etc.) is not put on stdout; it is written to an --out file.
 
 export class WcError extends Error {
   /**
-   * @param {string} code 에이전트가 분기할 때 쓰는 오류 코드 (예: NOT_A_GIT_REPO)
-   * @param {string} message 사람이 읽는 설명 (ASCII 영어)
-   * @param {unknown} [details] 추가 정보
+   * @param {string} code 에이전트가 분기할 때 쓰는 오류 코드 (예: NOT_A_GIT_REPO) / error code the agent branches on (e.g. NOT_A_GIT_REPO)
+   * @param {string} message 사람이 읽는 설명 (ASCII 영어) / human-readable description (ASCII English)
+   * @param {unknown} [details] 추가 정보 / extra information
    */
   constructor(code, message, details) {
     super(message);
@@ -19,7 +26,7 @@ export class WcError extends Error {
   }
 }
 
-/** 명령이나 옵션을 잘못 쓴 경우. 종료 코드 2로 구분한다. */
+/** 명령이나 옵션을 잘못 쓴 경우. 종료 코드 2로 구분한다. / A wrong command or option. Told apart by exit code 2. */
 export class UsageError extends WcError {
   constructor(message) {
     super('USAGE', message);
@@ -29,6 +36,9 @@ export class UsageError extends WcError {
 /**
  * "--key value", "--key=value", "--flag" 형태를 해석한다.
  * booleanFlags에 있는 이름은 값을 받지 않는다.
+ *
+ * Parses the "--key value", "--key=value" and "--flag" forms.
+ * Names in booleanFlags never take a value.
  */
 export function parseArgs(argv, booleanFlags = new Set()) {
   const positionals = [];
@@ -62,7 +72,7 @@ export function parseArgs(argv, booleanFlags = new Set()) {
 
 const ASCII_PRINTABLE = /^[\x20-\x7e]*$/;
 
-/** ASCII 값만 받는 옵션. 한글 같은 내용이 인자로 들어오는 것을 막는다. */
+/** ASCII 값만 받는 옵션. 한글 같은 내용이 인자로 들어오는 것을 막는다. / An option that accepts only ASCII values. Keeps content such as Korean text out of arguments. */
 export function getString(options, name, { required = false } = {}) {
   const value = options[name];
   if (value === undefined) {
@@ -78,7 +88,7 @@ export function getString(options, name, { required = false } = {}) {
   return value;
 }
 
-/** 경로 옵션. 경로에는 공백과 한글이 들어갈 수 있으므로 ASCII 검사를 하지 않는다. */
+/** 경로 옵션. 경로에는 공백과 한글이 들어갈 수 있으므로 ASCII 검사를 하지 않는다. / A path option. Paths can contain spaces and Korean characters, so there is no ASCII check. */
 export function getPathOption(options, name, { required = false } = {}) {
   const value = options[name];
   if (value === undefined) {
@@ -120,7 +130,7 @@ export function printOk(result) {
   process.stdout.write(`${JSON.stringify({ ok: true, ...result }, null, 2)}\n`);
 }
 
-/** 오류를 JSON으로 출력하고 종료 코드를 돌려준다. */
+/** 오류를 JSON으로 출력하고 종료 코드를 돌려준다. / Prints the error as JSON and returns the exit code. */
 export function printError(error) {
   const known = error instanceof WcError;
   const body = {

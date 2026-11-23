@@ -8,6 +8,14 @@
 //
 // HTML 주석이라 GitHub 화면에는 보이지 않는다. 마커 사이만 바꾸고 나머지는 건드리지 않는다.
 // GitHub 웹에서 고치면 줄바꿈이 CRLF가 되므로 비교 전에 정리한다.
+//
+// Finds and replaces the whycommit section in a PR body (spec 6.5.3-6.5.5, plan 2.5).
+// In the layout above, the PR template and anything the user wrote stay as they are,
+// and the whycommit section sits between the two markers.
+//
+// The markers are HTML comments, so GitHub does not show them. Only the part between the markers is changed;
+// nothing else is touched.
+// Editing on the GitHub website turns line breaks into CRLF, so they are normalized before comparing.
 
 import crypto from 'node:crypto';
 
@@ -42,7 +50,7 @@ export function wrapSection(content) {
   return `${START}\n${normalizeBody(content).trim()}\n${END}`;
 }
 
-/** 마커 사이만 바꾼다. */
+/** 마커 사이만 바꾼다. / Replaces only what is between the markers. */
 export function replaceSection(body, content) {
   const found = findSection(body);
   if (found.state !== 'present') throw new Error(`cannot replace: section is ${found.state}`);
@@ -50,13 +58,13 @@ export function replaceSection(body, content) {
   return `${b.slice(0, found.start)}${wrapSection(content)}${b.slice(found.end)}`;
 }
 
-/** 기존 본문(PR 템플릿 등) 아래에 붙인다. */
+/** 기존 본문(PR 템플릿 등) 아래에 붙인다. / Appends the section below the existing body (such as a PR template). */
 export function appendSection(body, content) {
   const b = normalizeBody(body).replace(/\s+$/, '');
   return b ? `${b}\n\n${wrapSection(content)}\n` : `${wrapSection(content)}\n`;
 }
 
-/** 줄 끝 공백, 줄바꿈 종류, 앞뒤 빈 줄 차이는 같은 내용으로 본다. */
+/** 줄 끝 공백, 줄바꿈 종류, 앞뒤 빈 줄 차이는 같은 내용으로 본다. / Differences in trailing spaces, line break style and leading or trailing blank lines count as the same content. */
 export function canonical(text) {
   return normalizeBody(text)
     .split('\n')

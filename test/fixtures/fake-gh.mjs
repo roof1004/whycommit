@@ -2,6 +2,11 @@
 // wc.mjs는 WHYCOMMIT_GH에 이 파일 경로가 있으면 진짜 gh 대신 "node fake-gh.mjs ..."를 실행한다.
 // PR과 이슈는 FAKE_GH_STATE(JSON 파일)에 저장하고, 호출 기록은 FAKE_GH_LOG에 한 줄씩 남긴다.
 // whycommit이 실제로 쓰는 명령만 흉내 낸다.
+//
+// A fake GitHub CLI for tests.
+// If WHYCOMMIT_GH holds this file's path, wc.mjs runs "node fake-gh.mjs ..." instead of the real gh.
+// PRs and issues are stored in FAKE_GH_STATE (a JSON file), and each call is logged as one line in FAKE_GH_LOG.
+// It imitates only the commands whycommit actually uses.
 
 import fs from 'node:fs';
 

@@ -1,6 +1,10 @@
 // 파일 입출력.
 // 쓸 때는 항상 UTF-8(BOM 없음), LF로 쓴다.
 // 읽을 때는 BOM을 떼고 CRLF를 LF로 바꾼다. 에이전트가 PowerShell 등으로 만든 파일도 받아들이기 위해서다.
+//
+// File input and output.
+// Files are always written as UTF-8 (no BOM) with LF.
+// On read, a BOM is removed and CRLF becomes LF, so files an agent made with PowerShell and the like are accepted too.
 
 import fs from 'node:fs';
 import path from 'node:path';
@@ -11,6 +15,11 @@ import { WcError } from './cli.mjs';
  * 같은 폴더도 Windows의 8.3 짧은 이름(C:\Users\RUNNER~1), macOS의 /var 와 /private/var,
  * 심볼릭 링크나 junction 때문에 다르게 보일 수 있고, git은 진짜 경로를 돌려준다.
  * 아직 없는 경로는 있는 부분까지만 맞추고 나머지를 이어 붙인다.
+ *
+ * Brings a path to a single "real path" form. Use it before checking whether two paths are the same folder.
+ * The same folder can look different because of Windows 8.3 short names (C:\Users\RUNNER~1), /var vs /private/var
+ * on macOS, or symbolic links and junctions, and git returns the real path.
+ * For a path that does not exist yet, only the existing part is resolved and the rest is appended.
  */
 export function canonicalPath(p) {
   const abs = path.resolve(p);
@@ -33,9 +42,10 @@ export function normalizeNewlines(text) {
   return text.replace(/\r\n?/g, '\n');
 }
 
-/** 바이트를 텍스트로 바꾼다. UTF-8과 UTF-16 LE(BOM 있음)만 받는다. */
+/** 바이트를 텍스트로 바꾼다. UTF-8과 UTF-16 LE(BOM 있음)만 받는다. / Decodes bytes to text. Accepts only UTF-8 and UTF-16 LE (with BOM). */
 export function decodeText(buffer, label = 'input') {
   // Windows PowerShell 5.1의 Out-File 기본 인코딩이 UTF-16 LE라서 따로 받아 준다.
+  // Out-File in Windows PowerShell 5.1 defaults to UTF-16 LE, so that is accepted as a special case.
   if (buffer.length >= 2 && buffer[0] === 0xff && buffer[1] === 0xfe) {
     return normalizeNewlines(buffer.subarray(2).toString('utf16le'));
   }
@@ -76,6 +86,9 @@ function sleepSync(ms) {
 /**
  * 임시 파일에 쓴 뒤 이름을 바꾼다. 쓰는 도중에 멈춰도 기존 파일이 반쯤 덮이지 않는다.
  * Windows에서는 백신이나 편집기가 파일을 잠깐 잡고 있으면 이름 바꾸기가 실패할 수 있어서 몇 번 다시 시도한다.
+ *
+ * Writes to a temporary file, then renames it. If writing stops midway, the existing file is not left half overwritten.
+ * On Windows the rename can fail while antivirus software or an editor briefly holds the file, so it retries a few times.
  */
 export function writeTextAtomic(file, text) {
   fs.mkdirSync(path.dirname(file), { recursive: true });

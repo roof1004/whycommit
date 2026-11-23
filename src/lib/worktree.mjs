@@ -1,9 +1,14 @@
 // 작업 트리 상태 (스테이징된 것 / 안 된 것 / 추적 안 하는 것 / 충돌).
 // git status --porcelain=v1 -z 를 읽는다. -z를 쓰면 공백이나 한글이 든 파일 이름도 따옴표 없이 그대로 나온다.
+//
+// Work tree status (staged / unstaged / untracked / conflicts).
+// Parses git status --porcelain=v1 -z. With -z, file names containing spaces or Korean characters come out
+// as is, without quotes.
 
 import { git } from './git.mjs';
 
 // 병합 충돌 상태를 나타내는 XY 코드
+// XY codes that mean a merge conflict
 const CONFLICT_CODES = new Set(['DD', 'AU', 'UD', 'UA', 'DU', 'AA', 'UU']);
 
 export function parsePorcelainZ(output) {
@@ -17,6 +22,7 @@ export function parsePorcelainZ(output) {
     const file = field.slice(3);
     let from = null;
     // 이름 바꾸기·복사는 "새 이름" 다음 칸에 "원래 이름"이 온다.
+    // For a rename or copy, the "original name" comes in the field after the "new name".
     if (x === 'R' || x === 'C' || y === 'R' || y === 'C') {
       from = fields[i + 1] ?? null;
       i += 1;

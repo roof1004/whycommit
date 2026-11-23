@@ -6,6 +6,16 @@
 //    - 마무리 모드: 아직 푸시하지 않은 커밋
 // 기록된 커밋이 rebase나 amend로 사라졌으면 stale로 알려 주고, 2의 범위를 대신 계산해 둔다.
 // 어떻게 할지는 사용자가 고른다 (계획에서 정한 방식).
+//
+// Quiz range: the commits after the "last quizzed commit" (spec 6.1.3).
+//
+// 1. If this branch has a record and that commit is still an ancestor of HEAD → the commits after the record
+// 2. If there is no record, or it cannot be used, the default range for the mode
+//    - PR mode: after the point where the branch split off the default branch (merge-base)
+//    - Finish mode: the commits not pushed yet
+// If the recorded commit disappeared through a rebase or amend, it is reported as stale, and the range from 2
+// is computed as well.
+// The user chooses what to do (the approach decided in the plan).
 
 import { WcError } from './cli.mjs';
 import { git, listRemotes, resolveCommit } from './git.mjs';
@@ -27,6 +37,10 @@ export function isValidBranchName(top, name) {
  * 기본 브랜치를 추측한다. 모르면 null (그때는 에이전트가 사용자에게 묻는다).
  * 순서: 원격의 HEAD → 흔한 이름(main, master) → init.defaultBranch 설정
  * (GitHub CLI로 묻는 방법은 4단계에서 더한다.)
+ *
+ * Guesses the default branch. null if unknown (the agent then asks the user).
+ * Order: the remote's HEAD → common names (main, master) → the init.defaultBranch setting
+ * (Asking the GitHub CLI is added in stage 4.)
  */
 export function detectDefaultBranch(top) {
   const remote = chooseRemote(listRemotes(top));
@@ -50,7 +64,7 @@ export function detectDefaultBranch(top) {
   return null;
 }
 
-/** PR이 비교할 기준. 원격 추적 브랜치가 있으면 그것을 쓴다 (GitHub의 PR도 원격 기준이라서). */
+/** PR이 비교할 기준. 원격 추적 브랜치가 있으면 그것을 쓴다 (GitHub의 PR도 원격 기준이라서). / The base a PR is compared against. Uses the remote-tracking branch if it exists (a GitHub PR is based on the remote too). */
 function baseRefFor(top, def) {
   if (def.remote && refExists(top, `refs/remotes/${def.remote}/${def.name}`)) return `refs/remotes/${def.remote}/${def.name}`;
   if (refExists(top, `refs/heads/${def.name}`)) return `refs/heads/${def.name}`;
@@ -77,7 +91,7 @@ function withCommits(info, top, base, reason) {
 }
 
 /**
- * @param {string} top 레포 최상위 폴더
+ * @param {string} top 레포 최상위 폴더 / the repo's top-level folder
  * @param {string} projectId
  * @param {{mode?: 'auto'|'pr'|'finish', ignoreRecorded?: boolean, defaultBranch?: string, branch: string}} opts
  */
@@ -128,6 +142,7 @@ export function computeRange(top, projectId, { mode = 'auto', ignoreRecorded = f
 
   if (resolvedMode === 'finish') {
     // 첫 번째 부모만 따라가며 아직 어떤 원격 추적 브랜치에도 없는 커밋을 찾는다.
+    // Follows first parents only, looking for commits that are not on any remote-tracking branch yet.
     const unpushed = lines(git(['rev-list', '--first-parent', head, '--not', '--remotes'], { cwd: top }).stdout);
     if (unpushed.length === 0) return withCommits(info, top, head, 'all_pushed');
     const oldest = unpushed[unpushed.length - 1];
@@ -136,5 +151,7 @@ export function computeRange(top, projectId, { mode = 'auto', ignoreRecorded = f
   }
 
   // 기본 브랜치를 몰라서 모드를 정할 수 없다. 에이전트가 사용자에게 묻고 --default-branch로 다시 부른다.
+  // The default branch is unknown, so the mode cannot be decided. The agent asks the user and calls again
+  // with --default-branch.
   return { ...info, base: null, fromRoot: false, reason: 'unknown_default_branch', count: null, commits: null, commitsTruncated: false, empty: null };
 }

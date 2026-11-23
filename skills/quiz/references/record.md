@@ -40,7 +40,7 @@
 
 ## 초안 보여 주기
 
-번호는 두 목록을 이어서 붙인다. 그래야 "2번 빼줘"가 헷갈리지 않는다.
+번호는 두 목록을 이어서 붙인다. 그래야 "2번 빼줘"가 헷갈리지 않는다. 항목 이름은 본문에 들어갈 이름과 같게 쓴다. 한국어면 "오늘 한 작업", "남은 작업", 영어면 "Today's work", "Remaining work"다. 출처도 같은 언어로 붙인다 (예: "(plan)", "(TODO comment: src/a.js:12)").
 
 ```
 기록 초안이에요.
@@ -88,8 +88,10 @@
 
 확인이 끝나면 `<tmpDir>/draft.json`을 쓰고(`formats.md`) 본문을 만든다.
 
-- PR 모드, PR 본문만: `wc.mjs body render --file "<tmpDir>/draft.json" --target pr --out "<tmpDir>/section.md"`
-- 마무리 모드: `wc.mjs body render --file "<tmpDir>/draft.json" --target commit --out "<tmpDir>/body.txt"`
+- PR 모드, PR 본문만: `wc.mjs body render --file "<tmpDir>/draft.json" --target pr --lang <lang> --out "<tmpDir>/section.md"`
+- 마무리 모드: `wc.mjs body render --file "<tmpDir>/draft.json" --target commit --lang <lang> --out "<tmpDir>/body.txt"`
+
+`<lang>`은 사용자와 대화하는 언어다 (한국어면 `ko`, 그 밖에는 `en`). 네 항목 이름과 출처 이름이 그 언어로 들어간다.
 
 학습 내용을 넣을 때:
 - `learning.include`를 true로 둔다. 설정이 켜져 있으면 생략해도 된다.

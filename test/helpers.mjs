@@ -1,6 +1,11 @@
 // 테스트 도우미.
 // 모든 테스트는 공백과 한글이 들어간 임시 폴더에서 돈다 (기획 9.2, 시나리오 16).
 // 사용자의 git 설정과 홈 폴더를 건드리지 않도록 git 전역 설정과 데이터 폴더를 임시 경로로 바꾼다.
+//
+// Test helpers.
+// Every test runs in a temporary folder whose path contains spaces and Korean characters (spec 9.2, scenario 16).
+// So that the user's git config and home folder are never touched, the global git config and the data folder
+// are pointed at temporary paths.
 
 import { execFileSync, spawnSync } from 'node:child_process';
 import fs from 'node:fs';
@@ -40,13 +45,13 @@ export function createSandbox() {
     root,
     home,
     env,
-    /** 샌드박스 안에 폴더를 만들고 경로를 돌려준다. */
+    /** 샌드박스 안에 폴더를 만들고 경로를 돌려준다. / Creates a folder inside the sandbox and returns its path. */
     dir(...parts) {
       const p = path.join(root, ...parts);
       fs.mkdirSync(p, { recursive: true });
       return p;
     },
-    /** 입력 파일을 만든다. 객체면 JSON으로, 문자열이면 그대로 쓴다. */
+    /** 입력 파일을 만든다. 객체면 JSON으로, 문자열이면 그대로 쓴다. / Creates an input file. An object is written as JSON, a string as is. */
     input(name, value) {
       const file = path.join(root, '입력 파일', name);
       fs.mkdirSync(path.dirname(file), { recursive: true });
@@ -63,7 +68,7 @@ export function createSandbox() {
   return sandbox;
 }
 
-/** wc.mjs를 실행한다. 결과 JSON과 종료 코드를 돌려준다. */
+/** wc.mjs를 실행한다. 결과 JSON과 종료 코드를 돌려준다. / Runs wc.mjs. Returns the result JSON and the exit code. */
 export function wc(sb, args, { cwd = sb.root, env = {} } = {}) {
   const r = spawnSync(process.execPath, [WC, ...args], { cwd, env: { ...sb.env, ...env }, encoding: 'buffer' });
   const stdout = r.stdout.toString('utf8');
@@ -72,11 +77,12 @@ export function wc(sb, args, { cwd = sb.root, env = {} } = {}) {
     json = JSON.parse(stdout);
   } catch {
     // help 같은 일반 텍스트 출력
+    // Plain text output, such as help
   }
   return { status: r.status, stdout, stderr: r.stderr.toString('utf8'), json };
 }
 
-/** 성공해야 하는 실행. 실패하면 출력과 함께 예외를 던진다. */
+/** 성공해야 하는 실행. 실패하면 출력과 함께 예외를 던진다. / A run that must succeed. If it fails, throws with the output. */
 export function wcOk(sb, args, opts) {
   const r = wc(sb, args, opts);
   if (r.status !== 0 || !r.json || r.json.ok !== true) {
@@ -102,6 +108,10 @@ export function commitFile(sb, repo, rel, content, message) {
  * 커밋 하나가 있는 레포를 만든다.
  * remoteUrl을 주면 origin을 그 URL로 등록한다 (프로젝트 ID 확인용).
  * pushTo: true면 로컬 bare 레포를 push 주소로 붙여서 실제로 푸시할 수 있게 한다.
+ *
+ * Creates a repo with one commit.
+ * If remoteUrl is given, origin is set to that URL (for checking the project ID).
+ * pushTo: true attaches a local bare repo as the push URL so pushes really work.
  */
 export function makeRepo(sb, name = 'repo', { remoteUrl, pushTo = false } = {}) {
   const dir = sb.dir(name);
@@ -122,6 +132,10 @@ export const FAKE_GH = path.join(here, 'fixtures', 'fake-gh.mjs');
 /**
  * 가짜 gh를 준비한다. 돌려주는 env를 wc 실행에 넘기면 된다.
  * state(): 가짜 GitHub의 현재 상태, setState(fn): 사용자가 GitHub 웹에서 고친 것처럼 상태를 바꾼다.
+ *
+ * Sets up the fake gh. Pass the returned env to the wc runs.
+ * state(): the fake GitHub's current state. setState(fn): changes the state as if the user had edited it
+ * on the GitHub website.
  */
 export function fakeGh(sb, initial = {}) {
   const dir = sb.dir('가짜 gh');
@@ -141,10 +155,10 @@ export function fakeGh(sb, initial = {}) {
   };
 }
 
-/** gh가 설치되지 않은 상황 (존재하지 않는 경로) */
+/** gh가 설치되지 않은 상황 (존재하지 않는 경로) / gh not installed (a path that does not exist) */
 export const NO_GH = { WHYCOMMIT_GH: path.join(ROOT, 'no-such-gh.mjs') };
 
-/** 파일이 BOM 없는 UTF-8, LF인지 확인할 때 쓴다. */
+/** 파일이 BOM 없는 UTF-8, LF인지 확인할 때 쓴다. / Used to check that a file is UTF-8 without a BOM, with LF. */
 export function rawBytes(file) {
   return fs.readFileSync(file);
 }

@@ -6,6 +6,15 @@
 //   node test/smoke.mjs prepare <base>   <base>/repo 레포와 <base>/in.json 입력을 만든다
 //   (셸에서) cd <base>/repo && WHYCOMMIT_HOME=<base>/data node <src>/wc.mjs notes add --file <base>/in.json
 //   node test/smoke.mjs verify <base>    저장된 노트가 입력과 같은지, 레포가 깨끗한지 확인한다
+//
+// Shell smoke test (CI only).
+// The unit tests start child processes directly from Node, so they never go through a shell.
+// To check that "the shell passes paths with Korean characters and spaces to node correctly",
+// this script only prepares and verifies; each shell in CI calls wc.mjs itself.
+//
+//   node test/smoke.mjs prepare <base>   creates the <base>/repo repo and the <base>/in.json input
+//   (in the shell) cd <base>/repo && WHYCOMMIT_HOME=<base>/data node <src>/wc.mjs notes add --file <base>/in.json
+//   node test/smoke.mjs verify <base>    checks that the saved note matches the input and the repo is clean
 
 import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';

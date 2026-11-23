@@ -1,4 +1,4 @@
-<!-- 원본은 레포의 shared/references/grading.md입니다. 스킬 폴더의 사본은 tools/sync-skills.mjs가 만들므로 직접 고치지 마세요. -->
+<!-- 원본은 레포의 shared/references/grading.md입니다. 스킬 폴더의 사본은 tools/sync-skills.mjs가 만들므로 직접 고치지 마세요. The source is shared/references/grading.md in the repo. The copies in the skill folders are made by tools/sync-skills.mjs, so do not edit them by hand. -->
 
 # 질문과 채점
 

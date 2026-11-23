@@ -1,5 +1,8 @@
 // 스킬과 매니페스트가 Agent Skills 표준과 Claude Code 플러그인 형식을 지키는지 검사한다.
 // CI에는 Claude Code가 없어서 "claude plugin validate"를 못 돌리므로, 표준의 규칙을 직접 확인한다.
+//
+// Checks that the skills and manifests follow the Agent Skills standard and the Claude Code plugin format.
+// CI has no Claude Code, so "claude plugin validate" cannot run there; the standard's rules are checked directly.
 
 import assert from 'node:assert/strict';
 import fs from 'node:fs';

@@ -2,6 +2,12 @@
 // - branches.<브랜치>.lastQuizzed: 마지막으로 퀴즈를 본 커밋
 // - planDoc: 기획 문서 위치 ({ path: "docs/plan.md" }, 없다고 답했으면 { path: null }, 모르면 null)
 // - prs.<브랜치>: PR 번호와 whycommit 부분을 마지막으로 쓴 내용 (4단계에서 사용)
+//
+// Per-project state (projects/<id>/state.json).
+// - branches.<branch>.lastQuizzed: the last quizzed commit
+// - planDoc: where the planning document is ({ path: "docs/plan.md" }; { path: null } if the user said there is none;
+//   null if unknown)
+// - prs.<branch>: the PR number and the whycommit section as last written (used from stage 4)
 
 import fs from 'node:fs';
 import path from 'node:path';

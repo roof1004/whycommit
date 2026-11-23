@@ -3,6 +3,12 @@
 //
 // 원본은 레포의 src/ 폴더입니다. skills/*/scripts/ 는 tools/sync-skills.mjs가 만든
 // 사본이니 직접 고치지 마세요.
+//
+// Entry point of the whycommit script.
+//   node <path to this file> <command> [options]      List of commands: node wc.mjs help
+//
+// The source lives in the repo's src/ folder. skills/*/scripts/ holds copies made by tools/sync-skills.mjs,
+// so do not edit them by hand.
 
 import fs from 'node:fs';
 import path from 'node:path';
@@ -25,6 +31,7 @@ import { loadConfig, publicConfig, setConfigValue, setWritingStyle, SETTABLE_KEY
 import { ghStatus, listOpenIssues } from './lib/gh.mjs';
 import { currentBranch, git, pushBranch, pushStatus, repoTop, resolveCommit } from './lib/git.mjs';
 import { canonicalPath, readJson, readText, writeJsonAtomic, writeTextAtomic } from './lib/io.mjs';
+import { normalizeLang, pickLang } from './lib/i18n.mjs';
 import { findPlanDocs } from './lib/plandoc.mjs';
 import { computeNewBody, createPrWithSection, findPrTemplates, prStatus, updatePrSection } from './lib/pr.mjs';
 import {
@@ -93,9 +100,11 @@ Quiz and record
                                          TODO comments since the last quiz.
   plan-doc find                          Remembered plan document and likely candidates.
   draft split --file FILE --out FILE     Split user-written text into items (newlines and commas).
-  body render --file DRAFT --out FILE [--target pr|commit]
-                                         Render the record with the four fixed headings. Learning
-                                         topics are taken from the notes, never from DRAFT.
+  body render --file DRAFT --out FILE [--target pr|commit] [--lang ko|en]
+                                         Render the record with the four fixed headings, in Korean
+                                         or English (default: the language setting, else Korean).
+                                         Learning topics are taken from the notes, never from DRAFT.
+                                         Notes commands read "lang" from the input file the same way.
 
 GitHub and finishing
   gh status                              Is gh installed and signed in? GitHub's default branch.
@@ -130,6 +139,7 @@ Git
 `;
 
 // ---- 공통 ----
+// ---- Shared helpers ----
 
 function requireRepoTop() {
   const top = repoTop(process.cwd());
@@ -152,7 +162,7 @@ function describeProject(info) {
   return { id: info.id, dir: info.dir, top: info.top, branch: info.branch, remote: info.remote, legacyLocal: info.legacyLocal };
 }
 
-/** PR 모드에 필요한 gh 상태. 준비가 안 됐으면 GH_NOT_READY. */
+/** PR 모드에 필요한 gh 상태. 준비가 안 됐으면 GH_NOT_READY. / The gh status PR mode needs. Throws GH_NOT_READY if gh is not ready. */
 function requireGhReady(info) {
   const status = ghStatus(info.top, { isGitHub: info.remote?.isGitHub ?? false, withDefaultBranch: false });
   if (!status.ready) {
@@ -164,18 +174,19 @@ function requireGhReady(info) {
   return status;
 }
 
-/** 한 줄 제목 (PR 제목 등) */
+/** 한 줄 제목 (PR 제목 등) / A one-line title (such as a PR title) */
 function readTitle(file) {
   const title = readText(path.resolve(file), 'title file').trim();
   if (!title || title.includes('\n')) throw new WcError('INVALID_INPUT', 'The title file must contain exactly one non-empty line.');
   return title;
 }
 
-/** --template은 레포 기준 경로 (pr template이 알려 준 값을 그대로 쓴다). */
+/** --template은 레포 기준 경로 (pr template이 알려 준 값을 그대로 쓴다). / --template is a path relative to the repo (pass the value pr template reported, as is). */
 function readTemplate(info, options) {
   const given = getPathOption(options, 'template');
   if (!given) return null;
   // info.top은 진짜 경로이므로 비교할 쪽도 같은 모양으로 맞춘다.
+  // info.top is a real path, so the path compared with it is brought to the same form.
   const abs = canonicalPath(path.resolve(info.top, given));
   const rel = path.relative(info.top, abs);
   if (rel.startsWith('..') || path.isAbsolute(rel)) {
@@ -192,7 +203,16 @@ function writeCurrentSection(options, status) {
   return out;
 }
 
-/** 입력 파일에 project가 있으면 그것을, 없으면 지금 레포의 프로젝트를 쓴다. */
+/**
+ * 노트를 다시 만들 언어. 입력 파일의 "lang" → 설정의 language 순서이고, 둘 다 없으면 null(전에 기억한 언어를 쓴다).
+ * The language to rebuild the notes in: "lang" in the input file, then the language setting. null if neither is
+ * set, which keeps the previously remembered language.
+ */
+function notesLang(input) {
+  return normalizeLang(input?.lang) ?? normalizeLang(loadConfig().config.language);
+}
+
+/** 입력 파일에 project가 있으면 그것을, 없으면 지금 레포의 프로젝트를 쓴다. / Uses the project from the input file if it has one, otherwise the current repo's project. */
 function projectFromInput(input) {
   if (input && typeof input === 'object' && input.project !== undefined) {
     return { id: validateProjectId(input.project), branch: null };
@@ -202,6 +222,7 @@ function projectFromInput(input) {
 }
 
 // ---- 명령 ----
+// ---- Commands ----
 
 const commands = {
   env: {
@@ -346,7 +367,8 @@ const commands = {
     run(o) {
       const input = readJson(path.resolve(getPathOption(o, 'file', { required: true })), 'input file');
       const project = projectFromInput(input);
-      return { project: project.id, ...addEntries(project.id, input, { defaultBranch: project.branch }) };
+      const lang = notesLang(input);
+      return { project: project.id, ...addEntries(project.id, input, { defaultBranch: project.branch, lang }) };
     },
   },
 
@@ -355,7 +377,7 @@ const commands = {
     run(o) {
       const input = readJson(path.resolve(getPathOption(o, 'file', { required: true })), 'input file');
       const project = projectFromInput(input);
-      return { project: project.id, ...recordReview(project.id, input) };
+      return { project: project.id, ...recordReview(project.id, input, { lang: notesLang(input) }) };
     },
   },
 
@@ -364,7 +386,7 @@ const commands = {
     run(o) {
       const input = readJson(path.resolve(getPathOption(o, 'file', { required: true })), 'input file');
       const project = projectFromInput(input);
-      return { project: project.id, ...recordDispute(project.id, input) };
+      return { project: project.id, ...recordDispute(project.id, input, { lang: notesLang(input) }) };
     },
   },
 
@@ -431,6 +453,7 @@ const commands = {
       const before = workingTreeStatus(top);
       if (before.conflicts.length > 0) {
         // git add -A는 충돌을 "해결됨"으로 표시해 버리므로 막는다.
+        // git add -A would mark the conflicts as "resolved", so this is blocked.
         throw new WcError('MERGE_CONFLICTS', 'Resolve the merge conflicts before staging.', { conflicts: before.conflicts });
       }
       git(['add', '-A'], { cwd: top });
@@ -561,26 +584,30 @@ const commands = {
   },
 
   'body render': {
-    options: ['file', 'target', 'out'],
+    options: ['file', 'target', 'out', 'lang'],
     run(o) {
       const out = resolveOutPath(getPathOption(o, 'out', { required: true }));
       const target = getChoice(o, 'target', ['pr', 'commit'], { fallback: 'pr' });
       const raw = readJson(path.resolve(getPathOption(o, 'file', { required: true })), 'draft file');
       const draft = parseDraft(raw);
-      const include = draft.learning.include ?? loadConfig().config.body.includeLearning;
+      const { config } = loadConfig();
+      // --lang → 설정의 language → 한국어 / --lang → the language setting → Korean
+      const lang = pickLang(getString(o, 'lang'), config.language);
+      const include = draft.learning.include ?? config.body.includeLearning;
       let topics = null;
       if (include) {
         // 원칙 1: 이해한 / 이해하지 못한 내용은 학습 노트에서만 가져온다.
+        // Principle 1: understood / not understood topics come only from the learning notes.
         const project = projectFromInput(raw);
         topics = learningTopics(loadNotes(project.id).entries, {
           ids: draft.learning.ids,
           branch: draft.learning.branch ?? project.branch,
         });
       }
-      const { text, sections } = renderBody(draft, topics, target);
+      const { text, sections } = renderBody(draft, topics, target, lang);
       if (!text) throw new WcError('EMPTY_BODY', 'Every section is empty, so there is nothing to write.');
       writeTextAtomic(out, `${text}\n`);
-      return { out, target, includeLearning: include, sections };
+      return { out, target, lang, includeLearning: include, sections };
     },
   },
 
@@ -700,6 +727,7 @@ const commands = {
         return { dryRun: true, sha: result.oldSha, out };
       }
       // 커밋이 바뀌었으니 "마지막으로 퀴즈를 본 커밋"도 새 커밋으로 옮긴다.
+      // The commit changed, so the "last quizzed commit" moves to the new commit too.
       const state = loadState(info.id);
       setLastQuizzed(state, branch, result.newSha);
       saveState(info.id, state);

@@ -7,6 +7,18 @@
 //   correct, shallow     → understood
 //   wrong, dont_know     → not_understood
 //   partial              → 에이전트가 맞은 부분과 빠진 부분을 두 항목으로 나누고 각각 status를 적는다
+//
+// Learning notes (projects/<id>/notes.json + notes.md).
+//
+// notes.json is the source of truth, and only this module writes it. notes.md is a file for reading,
+// rebuilt on every save.
+//
+// Principle 1: "understood / not understood" come only from the user's answers.
+// So the status follows from the grading result, and a save is refused if the two disagree.
+//   correct, shallow     → understood
+//   wrong, dont_know     → not_understood
+//   partial              → the agent splits the answer into the right part and the missing part as two entries,
+//                          each with its own status
 
 import crypto from 'node:crypto';
 import fs from 'node:fs';
@@ -58,7 +70,7 @@ export function saveNotes(projectId, notes) {
   return files;
 }
 
-/** notes.json이 있는 모든 프로젝트 ID (review "전체"용). */
+/** notes.json이 있는 모든 프로젝트 ID (review "전체"용). / Every project ID that has a notes.json (for review across all projects, "전체"). */
 export function listProjects() {
   const found = [];
   const walk = (dir, segments) => {
@@ -89,6 +101,7 @@ export function countStatuses(entries) {
 }
 
 // ---- 입력 검증 ----
+// ---- Input validation ----
 
 function text(value, field, { required = true, max = 20000, singleLine = false } = {}) {
   if (value === undefined || value === null) {
@@ -125,6 +138,7 @@ function parseAttempt(value, where, source) {
     source,
     question: text(value.question, `${where}.question`),
     // "모르겠다"는 답 요약이 비어 있어도 된다.
+    // For "모르겠다" ("I don't know"), the answer summary may be empty.
     answerSummary: text(value.answerSummary, `${where}.answerSummary`, { required: value.result !== 'dont_know' }),
     result: value.result,
     explanation: text(value.explanation, `${where}.explanation`, { required: false }) || null,
@@ -187,12 +201,27 @@ function newId(taken) {
 }
 
 // ---- 기록 ----
+// ---- Recording ----
+
+/**
+ * 노트의 언어를 기억한다. notes.md는 저장할 때마다 이 언어로 통째로 다시 만들어진다.
+ * lang이 null이면(정해진 게 없으면) 전에 기억한 언어를 그대로 쓴다.
+ *
+ * Remembers the notes' language. notes.md is rebuilt entirely in this language on every save.
+ * When lang is null (nothing was set), the previously remembered language stays.
+ */
+function rememberLang(notes, lang) {
+  if (lang) notes.lang = lang;
+}
 
 /**
  * 퀴즈 결과를 추가한다. 입력 형식은 notes add --help 와 스킬 문서 참고.
  * 모든 항목을 먼저 검증하고, 하나라도 잘못되면 아무것도 저장하지 않는다.
+ *
+ * Adds quiz results. For the input format, see notes add --help and the skill docs.
+ * Every entry is validated first; if any one is invalid, nothing is saved.
  */
-export function addEntries(projectId, input, { defaultBranch = null } = {}) {
+export function addEntries(projectId, input, { defaultBranch = null, lang = null } = {}) {
   if (!input || !Array.isArray(input.entries) || input.entries.length === 0) {
     throw invalid('The input must be {"entries": [...]} with at least one entry.');
   }
@@ -227,6 +256,7 @@ export function addEntries(projectId, input, { defaultBranch = null } = {}) {
       parentId = raw.parentId;
     }
     // 복습 중 꼬리 질문처럼 레포 밖에서 기록할 때는 브랜치를 본 항목에서 물려받는다.
+    // When recording outside a repo, such as a follow-up during review, the branch is inherited from the parent entry.
     const inheritedBranch = parentId ? notes.entries.find((e) => e.id === parentId)?.branch ?? null : null;
     if (raw.questionType !== undefined && raw.questionType !== null && !QUESTION_TYPES.includes(raw.questionType)) {
       throw invalid(`${where}.questionType must be one of: ${QUESTION_TYPES.join(', ')}.`);
@@ -255,6 +285,7 @@ export function addEntries(projectId, input, { defaultBranch = null } = {}) {
   });
 
   notes.entries.push(...entries);
+  rememberLang(notes, lang);
   const files = saveNotes(projectId, notes);
   return {
     added: entries.length,
@@ -268,8 +299,12 @@ export function addEntries(projectId, input, { defaultBranch = null } = {}) {
  * 복습 결과를 기록한다 (기획 7.5).
  * 맞히면 이해한 내용으로 옮기고 해결한 날짜를 적는다.
  * 못 맞히면 그대로 두고 횟수를 올린다. 이때는 다시 한 해설이 꼭 있어야 한다.
+ *
+ * Records a review result (spec 7.5).
+ * If the answer is right, the entry moves to understood and the resolved date is set.
+ * If not, the entry stays as is and its wrong count goes up. In that case the new explanation is required.
  */
-export function recordReview(projectId, input) {
+export function recordReview(projectId, input, { lang = null } = {}) {
   if (!input || typeof input.id !== 'string') throw invalid('The input must include "id".');
   const notes = loadNotes(projectId);
   const entry = notes.entries.find((e) => e.id === input.id);
@@ -289,6 +324,7 @@ export function recordReview(projectId, input) {
     entry.wrongCount += 1;
   }
   entry.attempts.push(attempt);
+  rememberLang(notes, lang);
   const files = saveNotes(projectId, notes);
   return {
     id: entry.id,
@@ -308,8 +344,15 @@ export function recordReview(projectId, input) {
  *
  * input: {"outcome": "changed" | "kept", "updates": [{"id", "result", "status"?, "explanation"?}]}
  * 일부만 맞음으로 둘로 나눈 문제는 두 항목을 함께 넘긴다.
+ *
+ * Changes a grade through a dispute (spec 6.2.8). Under principle 1, this is the only way to change a note's status.
+ * - Only the last attempt (the current question) of an already saved entry can be changed.
+ * - Once per question: refused if that attempt already has a dispute record.
+ * - If the attempt was a review, the wrong count that review raised or lowered and the resolved date are reverted too.
+ *
+ * For a question split in two as partially correct, pass both entries together.
  */
-export function recordDispute(projectId, input) {
+export function recordDispute(projectId, input, { lang = null } = {}) {
   if (!input || !['changed', 'kept'].includes(input.outcome)) throw invalid('outcome must be "changed" or "kept".');
   if (!Array.isArray(input.updates) || input.updates.length === 0) {
     throw invalid('The input must include "updates": [{"id": ..., "result": ...}].');
@@ -344,6 +387,7 @@ export function recordDispute(projectId, input) {
     if (entry.status === status) continue;
     if (attempt.source === 'review') {
       // 그 복습이 한 일을 되돌린다.
+      // Undo what that review did.
       if (status === 'understood') {
         entry.wrongCount = Math.max(0, entry.wrongCount - 1);
         entry.resolvedAt = today();
@@ -358,6 +402,7 @@ export function recordDispute(projectId, input) {
     entry.status = status;
   }
 
+  rememberLang(notes, lang);
   const files = saveNotes(projectId, notes);
   return {
     outcome: input.outcome,
@@ -368,10 +413,11 @@ export function recordDispute(projectId, input) {
 }
 
 // ---- 복습 대상 고르기 ----
+// ---- Picking review targets ----
 
 const lastSeen = (e) => e.attempts[e.attempts.length - 1]?.date ?? e.createdAt;
 
-/** 여러 번 놓친 것 먼저, 같으면 가장 오래 안 본 것 먼저 (기획 7.2). */
+/** 여러 번 놓친 것 먼저, 같으면 가장 오래 안 본 것 먼저 (기획 7.2). / Most often missed first; on a tie, the one unseen for the longest first (spec 7.2). */
 export function reviewOrder(a, b) {
   return (
     b.wrongCount - a.wrongCount ||

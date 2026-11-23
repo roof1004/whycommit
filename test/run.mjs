@@ -1,6 +1,10 @@
 // 테스트 실행기: node test/run.mjs
 // "node --test test/" 대신 파일 목록을 직접 넘긴다. 폴더나 glob 인자를 해석하는 방식이
 // Node 버전과 셸(PowerShell은 glob을 펼치지 않음)마다 달라서다.
+//
+// Test runner: node test/run.mjs
+// It passes the file list itself instead of "node --test test/", because how folder and glob arguments
+// are handled differs between Node versions and shells (PowerShell does not expand globs).
 
 import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';

@@ -8,6 +8,7 @@
 
 ```json
 {
+  "lang": "ko",
   "entries": [
     {
       "ref": "q1",
@@ -40,6 +41,7 @@
 
 | 필드 | 필수 | 설명 |
 |---|---|---|
+| `lang` | 아니요 | 사용자와 대화하는 언어. 한국어면 `"ko"`, 그 밖에는 `"en"`. `notes.md`의 라벨이 이 언어로 다시 만들어진다. 항상 넣는다 |
 | `topic` | 예 | 한 줄 주제 (200자 이하) |
 | `attempt.question` | 예 | 실제로 한 질문 |
 | `attempt.answerSummary` | `dont_know`가 아니면 예 | 사용자 답 요약 |
@@ -59,6 +61,7 @@
 
 ```json
 {
+  "lang": "ko",
   "outcome": "changed",
   "updates": [{ "id": "20261122-a1b2c3", "result": "correct" }]
 }

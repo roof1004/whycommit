@@ -1,4 +1,5 @@
 // commit 스킬용: 커밋 맥락 읽기와 커밋 만들기 (기획 5장).
+// For the commit skill: reads the commit context and creates the commit (spec section 5).
 
 import fs from 'node:fs';
 import path from 'node:path';
@@ -20,6 +21,10 @@ function share(items, pattern) {
 /**
  * 제목 후보를 만들 때 필요한 것을 한 번에 모은다. 결과는 --out 파일로만 쓴다 (한글 내용).
  * diff가 너무 길면 자르고 diffTruncated로 알린다.
+ *
+ * Gathers everything needed to suggest title candidates in one go. The result is written only to an --out file
+ * (it contains Korean text).
+ * A diff that is too long is cut, and diffTruncated says so.
  */
 export function commitContext(top, { maxDiffChars = 120000 } = {}) {
   const status = workingTreeStatus(top);
@@ -52,6 +57,11 @@ export function commitContext(top, { maxDiffChars = 120000 } = {}) {
  * 제목 한 줄로 커밋한다. 본문은 비운다.
  * 한글 제목이 셸 인자로 깨지지 않게, 정리한 제목을 데이터 폴더의 임시 파일에 써서 git commit -F로 넘긴다.
  * --cleanup=whitespace: "#"으로 시작하는 제목이 주석으로 지워지지 않게 한다.
+ *
+ * Commits with a single-line title. The body stays empty.
+ * So that a Korean title is not garbled as a shell argument, the cleaned-up title is written to a temporary file
+ * in the data folder and passed with git commit -F.
+ * --cleanup=whitespace: keeps a title that starts with "#" from being stripped as a comment.
  */
 export function createCommit(top, titleText) {
   const title = normalizeNewlines(titleText).trim();
@@ -90,9 +100,10 @@ export function createCommit(top, titleText) {
 }
 
 // "Co-Authored-By: ..." 같은 트레일러 줄
+// A trailer line such as "Co-Authored-By: ..."
 const TRAILER = /^[A-Za-z][A-Za-z0-9-]*: .+$/;
 
-/** 기존 메시지 뒤에 본문을 붙인다. 마지막 문단이 트레일러면 그 앞에 넣어 트레일러가 끝에 남게 한다. */
+/** 기존 메시지 뒤에 본문을 붙인다. 마지막 문단이 트레일러면 그 앞에 넣어 트레일러가 끝에 남게 한다. / Appends the body to the existing message. If the last paragraph is trailers, the body goes before it so the trailers stay at the end. */
 export function insertBeforeTrailers(message, body) {
   const trimmed = normalizeNewlines(message).replace(/\s+$/, '');
   const paragraphs = trimmed.split(/\n{2,}/);
@@ -109,6 +120,10 @@ export function insertBeforeTrailers(message, body) {
  * 마무리 모드: 마지막 커밋의 메시지 본문에 기록한다 (기획 6.5 마무리 모드 1).
  * - 이미 푸시됐거나 확인할 수 없으면 거부한다 (원칙 4).
  * - --only로 amend해서, 사용자가 스테이징해 둔 변경이 커밋에 섞이지 않게 한다.
+ *
+ * Finish mode: records the body into the last commit's message (spec 6.5, finish mode step 1).
+ * - Refuses if the commit is already pushed or that cannot be checked (principle 4).
+ * - Amends with --only so changes the user has staged do not get mixed into the commit.
  */
 export function amendBody(top, bodyText, { dryRun = false } = {}) {
   const body = normalizeNewlines(bodyText).trim();

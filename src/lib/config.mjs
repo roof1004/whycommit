@@ -1,6 +1,11 @@
 // 설정 파일 (~/whycommit/config.json).
 // 첫 실행 때는 아무것도 묻지 않고 기본값으로 파일을 만든다 (기획 8장).
 // 사람이 직접 고친 값이 잘못됐으면 파일은 건드리지 않고 그 값만 기본값으로 바꿔 쓰고 경고한다.
+//
+// The config file (~/whycommit/config.json).
+// On the first run it asks nothing and creates the file with the defaults (spec section 8).
+// If a value someone edited by hand is invalid, the file is left alone; only that value falls back to the default,
+// with a warning.
 
 import fs from 'node:fs';
 import { UsageError, WcError } from './cli.mjs';
@@ -17,6 +22,7 @@ export const DEFAULT_CONFIG = Object.freeze({
 });
 
 // config set으로 바꿀 수 있는 값. writingStyle은 내용이라 set-style로 파일을 통해 받는다.
+// Values that config set can change. writingStyle is content, so set-style takes it through a file.
 const SETTABLE = {
   'quiz.minQuestions': { type: 'int', min: 1, max: 10 },
   'quiz.maxQuestions': { type: 'int', min: 1, max: 10 },
@@ -79,7 +85,7 @@ function describe(spec) {
   return '"auto" or a language code such as ko or en';
 }
 
-/** 설정을 읽는다. 파일이 없으면 기본값으로 만든다. */
+/** 설정을 읽는다. 파일이 없으면 기본값으로 만든다. / Reads the config. Creates it with the defaults if the file does not exist. */
 export function loadConfig() {
   const file = configPath();
   if (!fs.existsSync(file)) {
@@ -114,7 +120,7 @@ export function loadConfig() {
   return { config, created: false, warnings };
 }
 
-/** config set: 값 하나를 바꾸고 저장한다. */
+/** config set: 값 하나를 바꾸고 저장한다. / config set: changes one value and saves it. */
 export function setConfigValue(key, rawValue) {
   const spec = SETTABLE[key];
   if (!spec) throw new UsageError(`Unknown setting "${key}". Settable keys: ${SETTABLE_KEYS.join(', ')}.`);
@@ -132,7 +138,7 @@ export function setConfigValue(key, rawValue) {
   return config;
 }
 
-/** "앞으로도 이렇게 써줘"라고 했을 때만 부른다. 빈 내용이면 스타일을 지운다. */
+/** "앞으로도 이렇게 써줘"라고 했을 때만 부른다. 빈 내용이면 스타일을 지운다. / Called only when the user says "write it like this from now on". Empty content clears the style. */
 export function setWritingStyle(text) {
   const style = text.trim();
   if (style.length > MAX_STYLE_LENGTH) {
@@ -145,7 +151,7 @@ export function setWritingStyle(text) {
   return config;
 }
 
-/** stdout에 실어도 되는 부분만 (writingStyle은 내용이라 빼고 있는지 여부만 알린다). */
+/** stdout에 실어도 되는 부분만 (writingStyle은 내용이라 빼고 있는지 여부만 알린다). / Only the parts safe to put on stdout (writingStyle is content, so it is left out and only its presence is reported). */
 export function publicConfig(config) {
   return {
     quiz: config.quiz,

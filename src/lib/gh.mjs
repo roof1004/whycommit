@@ -4,6 +4,13 @@
 //
 // 테스트용: WHYCOMMIT_GH에 JS 파일 경로를 주면 진짜 gh 대신 "node <그 파일>"을 실행한다.
 // 그 경로에 파일이 없으면 gh가 설치되지 않은 것으로 본다.
+//
+// Runs the GitHub CLI (gh).
+// As with git, it runs with an argument array, not through a shell.
+// Titles and bodies that contain Korean text are not passed as arguments but with gh api --input <JSON file>.
+//
+// For tests: if WHYCOMMIT_GH holds the path of a JS file, "node <that file>" runs instead of the real gh.
+// If no file exists at that path, gh is treated as not installed.
 
 import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
@@ -18,7 +25,7 @@ function command() {
   return { file: 'gh', prefix: [] };
 }
 
-/** gh를 실행한다. 설치돼 있지 않으면 GH_NOT_INSTALLED. */
+/** gh를 실행한다. 설치돼 있지 않으면 GH_NOT_INSTALLED. / Runs gh. Throws GH_NOT_INSTALLED if it is not installed. */
 export function gh(args, { cwd, allowFail = false } = {}) {
   const cmd = command();
   if (!cmd) throw new WcError('GH_NOT_INSTALLED', 'GitHub CLI (gh) is not installed.');
@@ -52,7 +59,7 @@ function ghJson(args, opts) {
   }
 }
 
-/** 설치 여부, 로그인 여부, (가능하면) 기본 브랜치 */
+/** 설치 여부, 로그인 여부, (가능하면) 기본 브랜치 / Whether gh is installed, whether it is logged in, and (if possible) the default branch */
 export function ghStatus(top, { isGitHub, withDefaultBranch = true }) {
   let installed = true;
   try {
@@ -77,7 +84,7 @@ export function ghStatus(top, { isGitHub, withDefaultBranch = true }) {
   return { installed, authenticated, applicable: isGitHub, ready: authenticated && isGitHub, defaultBranch };
 }
 
-/** 이 브랜치의 PR들 (열림/닫힘/머지 모두) */
+/** 이 브랜치의 PR들 (열림/닫힘/머지 모두) / The PRs for this branch (open, closed and merged) */
 export function listPrsForBranch(top, branch) {
   return ghJson(['pr', 'list', '--head', branch, '--state', 'all', '--json', 'number,state,url,headRefName', '--limit', '20'], {
     cwd: top,
@@ -88,7 +95,7 @@ export function getPr(top, number) {
   return ghJson(['api', `repos/{owner}/{repo}/pulls/${number}`], { cwd: top });
 }
 
-/** 한글 제목·본문은 JSON 파일로 넘긴다. */
+/** 한글 제목·본문은 JSON 파일로 넘긴다. / Titles and bodies with Korean text are passed in a JSON file. */
 function apiWithInput(top, method, endpoint, payload) {
   const file = path.join(tmpRoot(), `gh-input-${process.pid}-${Date.now()}.json`);
   writeJsonAtomic(file, payload);

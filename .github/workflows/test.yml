@@ -2,6 +2,11 @@
 #   macOS (zsh, bash) / Windows PowerShell 5.1 / Windows Git Bash / Linux
 # 각 환경에서 같은 코드로 단위 테스트를 돌리고, 셸에서 wc.mjs를 직접 불러
 # 공백과 한글이 들어간 경로를 제대로 넘기는지도 확인한다.
+#
+# Runs the script tests automatically in four environments (spec 9.2).
+#   macOS (zsh, bash) / Windows PowerShell 5.1 / Windows Git Bash / Linux
+# Each environment runs the same unit tests, and also calls wc.mjs directly from the shell
+# to check that paths with spaces and Korean characters are passed correctly.
 
 name: test
 
@@ -62,6 +67,10 @@ jobs:
 
       # 한글은 YAML에 그대로 쓰지 않고 바이트(octal)로 만든다.
       # 셸마다 스크립트 파일을 읽는 인코딩이 달라서, YAML의 한글이 깨지면 테스트가 엉뚱하게 실패하기 때문이다.
+      #
+      # Korean text is not written into the YAML directly; it is built from bytes (octal).
+      # Each shell reads the script file with a different encoding, and if the Korean text in the YAML got garbled,
+      # the test would fail for the wrong reason.
       - name: Smoke test through the shell (path with spaces and Korean)
         if: matrix.shell != 'powershell'
         run: |

@@ -9,6 +9,18 @@
 //   rename_only  내용 변화 없이 이름만 바뀜
 //   format_only  공백·빈 줄만 바뀜
 //   code         그 밖의 모든 것 (설정 파일 포함 → 에이전트가 다시 본다)
+//
+// First-pass "skip" decision (plan 2.6).
+// The script classifies only what can be decided mechanically, such as the file type.
+// Whether only comments or only config values changed depends on the language, so the agent decides that in a second pass.
+//
+// Classes
+//   docs         documentation (*.md, files under docs/, LICENSE, etc.)
+//   asset        images and similar
+//   lockfile     lock files (package-lock.json, etc.)
+//   rename_only  renamed with no change in content
+//   format_only  only whitespace or blank lines changed
+//   code         everything else (config files included, so the agent looks at them again)
 
 import path from 'node:path';
 
@@ -35,9 +47,10 @@ const LOCKFILES = new Set([
 ]);
 const DOC_NAMES = /^(license|licence|copying|changelog|changes|history|authors|contributors|contributing|code_of_conduct|security|notice|readme)(\..*)?$/i;
 // .txt지만 문서가 아닌 것: 의존성 목록이나 빌드 설정은 설계 결정일 수 있다.
+// .txt files that are not docs: dependency lists and build settings can be design decisions.
 const TXT_NOT_DOC = /^(requirements.*|constraints.*|cmakelists|robots)\.txt$/i;
 
-/** 경로만 보고 분류한다. */
+/** 경로만 보고 분류한다. / Classifies by the path alone. */
 export function classifyPath(filePath) {
   const posix = filePath.replace(/\\/g, '/');
   const base = path.posix.basename(posix).toLowerCase();
@@ -51,8 +64,8 @@ export function classifyPath(filePath) {
 }
 
 /**
- * @param {{path: string, status: string, similarity?: number|null}} file  status는 git의 A/M/D/R/C/T
- * @param {boolean} whitespaceOnly 공백을 무시하면 차이가 없는지
+ * @param {{path: string, status: string, similarity?: number|null}} file  status는 git의 A/M/D/R/C/T / status is git's A/M/D/R/C/T
+ * @param {boolean} whitespaceOnly 공백을 무시하면 차이가 없는지 / whether there is no difference when whitespace is ignored
  */
 export function classifyChange(file, whitespaceOnly) {
   if (file.status === 'R' && file.similarity === 100) return 'rename_only';
@@ -62,7 +75,7 @@ export function classifyChange(file, whitespaceOnly) {
   return 'code';
 }
 
-/** 모든 파일이 code가 아니면 건너뛰기 후보다. */
+/** 모든 파일이 code가 아니면 건너뛰기 후보다. / A skip candidate when none of the files is code. */
 export function isSkipCandidate(files) {
   return files.length > 0 && files.every((f) => f.class !== 'code');
 }

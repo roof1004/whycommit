@@ -5,6 +5,16 @@
 // - 사용자가 GitHub에서 whycommit 부분을 고쳤으면(edited) 또는 우리가 쓴 기록이 없으면(unknown)
 //   --confirm overwrite 없이는 바꾸지 않는다. 마커를 지웠으면(removed) --confirm append 없이는 다시 넣지 않는다.
 // - 미리보기 때 본 본문과 지금 본문이 다르면(BODY_CHANGED) 바꾸지 않는다. 미리보기를 다시 보여 줘야 한다.
+//
+// Wrapping up in PR mode (spec 6.5).
+//
+// Safety checks
+// - If a PR already exists, only the whycommit section is changed, not the whole body.
+// - If the user edited the whycommit section on GitHub (edited), or there is no record of what we wrote (unknown),
+//   it is not changed without --confirm overwrite. If the markers were removed (removed), the section is not added
+//   back without --confirm append.
+// - If the body now differs from the body seen at preview time (BODY_CHANGED), nothing is changed.
+//   The preview has to be shown again.
 
 import fs from 'node:fs';
 import path from 'node:path';
@@ -28,6 +38,10 @@ const CONFIRM_NEEDED = { edited: 'overwrite', unknown: 'overwrite', removed: 'ap
 /**
  * GitHub이 인식하는 PR 템플릿 위치. 기본 템플릿(파일 하나)을 먼저, 폴더 안의 여러 템플릿을 뒤에 둔다.
  * 폴더 목록 순서는 운영체제마다 달라서 직접 정렬한다.
+ *
+ * PR template locations that GitHub recognizes. The default template (a single file) comes first,
+ * then the multiple templates inside a folder.
+ * Directory listing order differs between operating systems, so the list is sorted here.
  */
 export function findPrTemplates(top) {
   const single = [];
@@ -52,7 +66,7 @@ export function findPrTemplates(top) {
   return [...single, ...multiple];
 }
 
-/** 이 브랜치의 열린 PR과 whycommit 부분의 상태 */
+/** 이 브랜치의 열린 PR과 whycommit 부분의 상태 / The open PR for this branch and the state of its whycommit section */
 export function prStatus(top, projectId, branch) {
   const prs = listPrsForBranch(top, branch);
   const open = prs.find((p) => p.state === 'OPEN') ?? null;
@@ -86,7 +100,7 @@ export function prStatus(top, projectId, branch) {
   };
 }
 
-/** 새 본문을 계산한다 (아무것도 쓰지 않는다). */
+/** 새 본문을 계산한다 (아무것도 쓰지 않는다). / Computes the new body (writes nothing). */
 export function computeNewBody(status, sectionText, templateText) {
   if (!status.exists) {
     return templateText ? appendSection(templateText, sectionText) : `${wrapSection(sectionText)}\n`;

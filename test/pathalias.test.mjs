@@ -3,6 +3,12 @@
 //   macOS:   /var/... 와 진짜 경로 /private/var/...
 //   어디서나: 심볼릭 링크나 junction으로 연결된 작업 폴더
 // git은 진짜 경로를 돌려주므로, 비교하기 전에 양쪽을 같은 모양으로 맞춰야 한다.
+//
+// When the same folder shows up under two different paths (found in CI)
+//   Windows:  the 8.3 short name (C:\Users\RUNNER~1\...) and the long name
+//   macOS:    /var/... and the real path /private/var/...
+//   Anywhere: a work folder reached through a symbolic link or junction
+// git returns the real path, so both sides must be brought to the same form before comparing.
 
 import assert from 'node:assert/strict';
 import fs from 'node:fs';

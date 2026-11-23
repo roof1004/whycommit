@@ -4,6 +4,13 @@
 //   macOS/Linux: ~/whycommit   Windows: C:\Users\<이름>\whycommit
 // WHYCOMMIT_HOME 환경변수로 바꿀 수 있다 (테스트용, 또는 홈이 git 레포인 사람용).
 // 경로는 항상 path.join으로 만든다. 공백과 한글이 들어간 홈 폴더에서도 그대로 동작한다.
+//
+// Data folder paths and the "never write inside a repo" safety check.
+//
+// The default location is the whycommit folder in the home folder.
+//   macOS/Linux: ~/whycommit   Windows: C:\Users\<name>\whycommit
+// The WHYCOMMIT_HOME environment variable changes it (for tests, or for people whose home folder is a git repo).
+// Paths are always built with path.join, so a home folder with spaces or Korean characters works as is.
 
 import fs from 'node:fs';
 import os from 'node:os';
@@ -18,17 +25,18 @@ export function dataHome() {
   return path.join(os.homedir(), 'whycommit');
 }
 
-/** 임시 파일의 최상위 폴더. 실제 교환 파일은 실행마다 이 안에 만든 run-* 폴더에 둔다. */
+/** 임시 파일의 최상위 폴더. 실제 교환 파일은 실행마다 이 안에 만든 run-* 폴더에 둔다. / Top folder for temporary files. The actual exchange files go in a run-* folder created inside it for each run. */
 export const tmpRoot = () => path.join(dataHome(), 'tmp');
 export const configPath = () => path.join(dataHome(), 'config.json');
 export const projectsRoot = () => path.join(dataHome(), 'projects');
 
-/** 프로젝트 ID("owner/repo" 또는 "_local/폴더")를 폴더 경로로 바꾼다. */
+/** 프로젝트 ID("owner/repo" 또는 "_local/폴더")를 폴더 경로로 바꾼다. / Turns a project ID ("owner/repo" or "_local/<folder>") into a folder path. */
 export function projectDir(projectId) {
   return path.join(projectsRoot(), ...projectId.split('/'));
 }
 
 // 이 값들이 설정돼 있으면 git이 cwd 대신 엉뚱한 레포를 볼 수 있어서 검사할 때는 뺀다.
+// If these are set, git can look at some other repo instead of cwd, so they are removed for the check.
 const GIT_LOCATION_VARS = ['GIT_DIR', 'GIT_WORK_TREE', 'GIT_INDEX_FILE', 'GIT_COMMON_DIR'];
 
 function nearestExistingDir(p) {
@@ -41,7 +49,7 @@ function nearestExistingDir(p) {
   return fs.statSync(dir).isDirectory() ? dir : path.dirname(dir);
 }
 
-/** 경로가 git 작업 트리 안에 있으면 그 레포의 최상위 폴더를, 아니면 null을 돌려준다. */
+/** 경로가 git 작업 트리 안에 있으면 그 레포의 최상위 폴더를, 아니면 null을 돌려준다. / Returns the repo's top-level folder if the path is inside a git work tree, otherwise null. */
 export function findEnclosingWorkTree(p) {
   const dir = nearestExistingDir(p);
   const opts = { cwd: dir, allowFail: true, unsetEnv: GIT_LOCATION_VARS };
@@ -56,6 +64,9 @@ let dataHomeVerified = false;
 /**
  * 원칙 5: 학습 노트는 어떤 경우에도 레포 안에 만들지 않는다.
  * 홈 폴더 자체를 git으로 관리하는 사람(dotfiles)도 있어서, 쓰기 전에 매번 확인한다.
+ *
+ * Principle 5: learning notes are never created inside a repo, no matter what.
+ * Some people keep the home folder itself in git (dotfiles), so this is checked before writing.
  */
 export function assertDataHomeSafe() {
   if (dataHomeVerified) return;
@@ -71,7 +82,7 @@ export function assertDataHomeSafe() {
   dataHomeVerified = true;
 }
 
-/** --out 경로를 확인한다. 노트 내용이 레포 안 파일로 새어 나가지 않게 한다. */
+/** --out 경로를 확인한다. 노트 내용이 레포 안 파일로 새어 나가지 않게 한다. / Checks an --out path so note content does not leak into a file inside a repo. */
 export function resolveOutPath(p) {
   const abs = path.resolve(p);
   const repo = findEnclosingWorkTree(path.dirname(abs));
@@ -88,12 +99,17 @@ export function resolveOutPath(p) {
 // ---- 실행별 임시 폴더 ----
 // 에이전트와 스크립트가 주고받는 파일(diff, 제목, 퀴즈 결과 등)은 실행마다 새 폴더에 두고,
 // 스킬이 끝나면 폴더째 지운다. 이전 실행의 파일을 잘못 읽는 일을 막고, 내용이 노트 밖에 남지 않게 한다.
+//
+// ---- Per-run temporary folder ----
+// Files the agent and the script exchange (diffs, titles, quiz results, etc.) go in a new folder for each run,
+// and the whole folder is removed when the skill ends. This prevents reading a previous run's files by mistake
+// and keeps the content from staying anywhere outside the notes.
 
 const RUN_PREFIX = 'run-';
 const STALE_MS = 24 * 60 * 60 * 1000;
 const pad = (n) => String(n).padStart(2, '0');
 
-/** 하루가 지난 run-* 폴더와 남은 파일을 지운다 (세션이 끊겨 정리하지 못한 것). */
+/** 하루가 지난 run-* 폴더와 남은 파일을 지운다 (세션이 끊겨 정리하지 못한 것). / Removes run-* folders and leftover files older than a day (left behind when a session was cut off). */
 export function pruneStaleTmp(now = Date.now()) {
   const root = tmpRoot();
   let removed = 0;
@@ -111,12 +127,13 @@ export function pruneStaleTmp(now = Date.now()) {
       removed += 1;
     } catch {
       // 다른 프로그램이 잡고 있으면 다음에 지운다
+      // If another program holds it, it is removed next time
     }
   }
   return removed;
 }
 
-/** 이번 실행에 쓸 임시 폴더를 만든다. 이름은 ASCII만 쓴다. */
+/** 이번 실행에 쓸 임시 폴더를 만든다. 이름은 ASCII만 쓴다. / Creates the temporary folder for this run. Its name is ASCII only. */
 export function createRunDir() {
   assertDataHomeSafe();
   const d = new Date();
@@ -129,7 +146,7 @@ export function createRunDir() {
   }
 }
 
-/** tmp/run-* 폴더 하나를 지운다. 그 밖의 경로는 절대 지우지 않는다. */
+/** tmp/run-* 폴더 하나를 지운다. 그 밖의 경로는 절대 지우지 않는다. / Removes one tmp/run-* folder. It never removes any other path. */
 export function removeRunDir(dir) {
   const abs = canonicalPath(dir);
   const rel = path.relative(canonicalPath(tmpRoot()), abs);
