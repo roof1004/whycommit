@@ -1,7 +1,7 @@
 {
   "name": "whycommit",
   "displayName": "whycommit",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "커밋과 PR 시점에 에이전트가 면접 질문처럼 물어서 자기 코드를 이해하고 넘어가게 하는 학습 도구. commit, quiz, review 스킬.",
   "author": {
     "name": "roof1004",
