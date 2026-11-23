@@ -251,7 +251,8 @@ whycommit/
 ├── .claude-plugin/       Claude Code 플러그인과 마켓플레이스 매니페스트
 ├── skills/               Agent Skills 표준 스킬 (commit, quiz, review)
 ├── src/                  스크립트 원본. 고칠 때는 여기만 고칩니다
-├── tools/                스크립트 동기화, 표준 스킬 설치 도구
+├── shared/               여러 스킬이 함께 쓰는 문서의 원본 (채점 기준)
+├── tools/                스킬 폴더 동기화, 표준 스킬 설치 도구
 ├── test/                 스크립트 테스트
 └── docs/plan.md          기획 문서
 ```
@@ -261,12 +262,17 @@ whycommit/
 필요한 것은 Node.js 18 이상과 git뿐입니다. 외부 패키지는 쓰지 않습니다.
 
 ```sh
-node test/run.mjs                    # 스크립트 테스트
-node tools/sync-scripts.mjs          # src/ 를 각 스킬의 scripts/ 로 복사
-node tools/sync-scripts.mjs --check  # 사본이 원본과 같은지 확인 (CI에서도 실행)
+node test/run.mjs                   # 스크립트 테스트
+node tools/sync-skills.mjs          # 원본을 각 스킬 폴더로 복사
+node tools/sync-skills.mjs --check  # 사본이 원본과 같은지 확인 (CI에서도 실행)
 ```
 
-스크립트는 `src/`에서만 고치고 동기화 도구로 복사합니다. 각 스킬은 자기 폴더 밖을 참조하지 않아야 하기 때문에(Agent Skills 표준) 스킬마다 사본을 둡니다.
+각 스킬은 자기 폴더 밖을 참조하지 않아야 하기 때문에(Agent Skills 표준) 스킬마다 사본을 둡니다. 원본만 고치고 동기화 도구로 복사합니다.
+
+| 원본 | 사본 |
+|---|---|
+| `src/` | `skills/*/scripts/` (모든 스킬) |
+| `shared/references/grading.md` | `skills/quiz/references/`, `skills/review/references/` (채점 기준) |
 
 스크립트 규칙:
 

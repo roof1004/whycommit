@@ -57,8 +57,8 @@ jobs:
       - name: Unit tests
         run: node test/run.mjs
 
-      - name: Skill script copies match src
-        run: node tools/sync-scripts.mjs --check
+      - name: Skill folder copies match their sources
+        run: node tools/sync-skills.mjs --check
 
       # 한글은 YAML에 그대로 쓰지 않고 바이트(octal)로 만든다.
       # 셸마다 스크립트 파일을 읽는 인코딩이 달라서, YAML의 한글이 깨지면 테스트가 엉뚱하게 실패하기 때문이다.

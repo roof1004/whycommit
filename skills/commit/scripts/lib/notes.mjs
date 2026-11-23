@@ -226,6 +226,8 @@ export function addEntries(projectId, input, { defaultBranch = null } = {}) {
       }
       parentId = raw.parentId;
     }
+    // 복습 중 꼬리 질문처럼 레포 밖에서 기록할 때는 브랜치를 본 항목에서 물려받는다.
+    const inheritedBranch = parentId ? notes.entries.find((e) => e.id === parentId)?.branch ?? null : null;
     if (raw.questionType !== undefined && raw.questionType !== null && !QUESTION_TYPES.includes(raw.questionType)) {
       throw invalid(`${where}.questionType must be one of: ${QUESTION_TYPES.join(', ')}.`);
     }
@@ -245,7 +247,7 @@ export function addEntries(projectId, input, { defaultBranch = null } = {}) {
       kind: parentId ? 'followup' : 'question',
       parentId,
       questionType: raw.questionType ?? null,
-      branch: typeof raw.branch === 'string' && raw.branch.trim() ? raw.branch.trim() : defaultBranch,
+      branch: typeof raw.branch === 'string' && raw.branch.trim() ? raw.branch.trim() : (inheritedBranch ?? defaultBranch),
       files: parseFiles(raw.files, where),
       commits: parseCommits(raw.commits, where),
       attempts: [attempt],

@@ -256,6 +256,9 @@ test('레포 밖에서는 입력 파일의 project로 기록한다 (전체 복�
   const out = wcOk(sb, ['notes', 'add', '--file', sb.input('f.json', followup)], { cwd: outside });
   assert.equal(out.project, `_local/복습 ${KO}`);
   assert.equal(out.stats.total, 5);
+  const saved = readJsonFile(path.join(sb.home, 'projects', '_local', `복습 ${KO}`, 'notes.json')).entries.at(-1);
+  assert.equal(saved.attempts[0].source, 'review');
+  assert.equal(saved.branch, 'main', '레포 밖에서 기록해도 본 항목의 브랜치를 물려받는다');
 
   const unknown = wc(sb, ['notes', 'add', '--file', sb.input('u.json', { ...followup, project: 'no/such' })], { cwd: outside });
   assert.equal(unknown.json.error.code, 'UNKNOWN_PROJECT');

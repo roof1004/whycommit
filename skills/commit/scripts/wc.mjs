@@ -1,7 +1,7 @@
 // whycommit 스크립트 진입점.
 //   node <이 파일의 경로> <명령> [옵션]      명령 목록: node wc.mjs help
 //
-// 원본은 레포의 src/ 폴더입니다. skills/*/scripts/ 는 tools/sync-scripts.mjs가 만든
+// 원본은 레포의 src/ 폴더입니다. skills/*/scripts/ 는 tools/sync-skills.mjs가 만든
 // 사본이니 직접 고치지 마세요.
 
 import fs from 'node:fs';
